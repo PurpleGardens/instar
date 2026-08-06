@@ -12,10 +12,10 @@ Positioning, announcement drafts, and external communications for Instar. Curren
 
 Nothing here goes public until the off-box verifications in `../Planning/Naming.md` §Still-to-verify come back clean:
 
-1. PyPI name availability
-2. Domain reservations (`instar.io`, `instar.dev`)
-3. Formal trademark quick-pass (USPTO TESS, classes 9 + 42)
-4. Prithvi ack on the name and fork approach
+1. ~~PyPI name availability~~ ✓ 2026-07-23 — reserved as `instar-harness` (bare `instar` is disallowed by PyPI policy); import package and CLI stay `instar`
+2. ~~Domain reservation~~ ✓ 2026-07-23 — `instar-dev.org` (not `instar.io`/`instar.dev`; `instar.com` is a German camera company)
+3. Formal trademark clearance — knockout ✓ 2026-07-23; **full Class-9 clearance still owed**, and it is the binding hold
+4. Prithvi ack on the name and fork approach — draft ready in [`Prithvi-Note.md`](Prithvi-Note.md) (unsent)
 
 Drafts can and should exist before that gate clears. Publishing cannot.
 
