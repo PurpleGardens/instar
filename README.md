@@ -2,7 +2,7 @@
 
 An open-source harness for measuring LLM workloads — cost, quality, and latency — on your own traffic.
 
-> **Status:** pre-release. v0.1.0 targeted for the end of the two-week sprint starting 2026-07-21. The harness core is runnable today in mock mode; the API surface is still unstable. See [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) for the plan.
+> **Status:** pre-release (`0.1.0.dev0`, no tagged release yet). The harness core — CLI, provider adapters, routing policies, rubrics, reporters — is runnable today in mock mode and against live providers; the API surface is still unstable. See [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) for the plan.
 
 ## Who it's for
 
@@ -66,8 +66,9 @@ Python 3.11+.
 - [`Engineering/Docs/RUBRICS.md`](./Engineering/Docs/RUBRICS.md) — the rubric reference: every field, metric, and verdict rule.
 - [`Engineering/Docs/CODE-OVERVIEW.md`](./Engineering/Docs/CODE-OVERVIEW.md) — orientation for contributors: architecture, the four core abstractions, and how to extend each.
 - [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) — the plan: IP boundary, roadmap, sprint, open questions.
+- [`Engineering/Docs/COMPARISON-smevals.md`](./Engineering/Docs/COMPARISON-smevals.md) — how Instar composes with [smevals](https://github.com/prime-radiant-inc/smevals), and which questions each tool is the right one for.
 - [`Planning/Naming.md`](./Planning/Naming.md) — why "Instar," what off-box verifications are still owed before public announcement.
-- Docs site — MkDocs Material scaffold arrives in Week 2; will publish to GitHub Pages under `purpleblossomai.github.io/instar/`.
+- Docs site — planned: GitHub Pages under `purpleblossomai.github.io/instar/`, later `instar-dev.org`.
 
 ## What Instar is NOT
 
@@ -82,8 +83,8 @@ Full anti-scope in [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) §1.
 ## License, contributing, security
 
 - **License:** Apache 2.0. See [`LICENSE`](./LICENSE).
-- **Contributing:** `CONTRIBUTING.md` is a Week-1 sprint task and will land shortly. Until then, issues and PRs welcome; only Brian and Prithvi have merge rights at v0.1 (see [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) §6).
-- **Security:** `SECURITY.md` also lands Week 1. Until then, please email security concerns privately rather than opening a public issue.
+- **Contributing:** see [`CONTRIBUTING.md`](./CONTRIBUTING.md). Issues and PRs are welcome; merge rights are limited to Brian and Prithvi through v0.1 (see [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) §6).
+- **Security:** see [`SECURITY.md`](./SECURITY.md) — please report privately rather than opening a public issue.
 
 ## Related
 

@@ -13,6 +13,7 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 | **Turn a decision into a pass/fail check** | [`GUIDE-Creating-Rubrics.md`](GUIDE-Creating-Rubrics.md) → [`RUBRICS.md`](RUBRICS.md) |
 | **Learn to read a result with judgment** | [`CASE-STUDY-Qwen-Triage.md`](CASE-STUDY-Qwen-Triage.md) |
 | **Work on the code** | [`CODE-OVERVIEW.md`](CODE-OVERVIEW.md) → [`RUNBOOK.md`](RUNBOOK.md) |
+| **Figure out whether Instar is even the right tool** | [`COMPARISON-smevals.md`](COMPARISON-smevals.md) |
 
 ---
 
@@ -28,6 +29,7 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 | [`RUBRICS.md`](RUBRICS.md) | reference | operator | Every rubric field, metric, and verdict rule. Keep it open while writing one. |
 | [`CASE-STUDY-Qwen-Triage.md`](CASE-STUDY-Qwen-Triage.md) | case study (judge it) | student + operator | A real run where the verdict said FAIL and was wrong to trust. Teaches the judgment no tool can automate. |
 | [`CODE-OVERVIEW.md`](CODE-OVERVIEW.md) | reference | contributor | Architecture, the four core abstractions, and how to extend each. |
+| [`COMPARISON-smevals.md`](COMPARISON-smevals.md) | orientation | evaluator | Instar answers the workload-economics question; smevals answers the capability question. Which to reach for, and how they chain. |
 
 ## How these docs are organized: teach by mode, not just by reader
 
