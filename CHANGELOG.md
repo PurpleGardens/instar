@@ -8,6 +8,7 @@ Instar is in **v0.x** — the API surface is unstable until v1.0.0. Breaking cha
 
 ### Added
 
+- `Engineering/Docs/COMPARISON-smevals.md` — where Instar sits relative to [smevals](https://github.com/prime-radiant-inc/smevals). smevals answers the capability question ("how good is model X at task Y?"); Instar answers the workload-economics question ("does this routing change pay off on my traffic?"). Documents the two-phase composition (candidate discovery in smevals, economic decision in Instar), an honest list of what smevals does better, and why cost tracking is an input-contract change rather than a feature. Three borrow items are named there and tracked for v0.2: a static HTML report, an `instar docs` command for coding agents, and an `--exec` runner backend.
 - **The harness core.** Clean-room port of the internal gateway experiment code into `Engineering/src/instar/`, restructured to the package layout in `Planning/Project-Plan.md` §4:
   - `core/` — `TrafficSample` and JSONL workload fixtures; `FeatureCatalog`; cost math (per-token pricing, prompt-caching model, self-hosting break-even); the routing runner (`run_route`, `run_sweep`); the gateway A/B latency runner (`run_gateway`).
   - `providers/` — `Backend` interface and `CompletionResult`; `MockBackend` (deterministic), `AnthropicBackend` (optional SDK, lazily imported), and `OpenAICompatBackend`.
