@@ -72,8 +72,8 @@ four. Neither invented them.
 | Runner contract | any executable, env-var driven | Python adapter (`Backend`); OpenAI-compatible + Anthropic |
 | Grading | Checks in order; any failed Check fails the Grade, else score vs `pass_threshold` | multi-dimension rubric; **worst dimension wins**; bar set before the run |
 | Harness errors | failed Runs are never graded and are excluded from reports | `run.error_count` is a mandatory rubric dimension at `pass_at: 0` |
-| Cost | not tracked | baseline vs routed USD, saved %, break-even request count |
-| Latency | not tracked | p50 / p95 / p99 / mean |
+| Cost | not computed (a Runner may leave token counts in its own artifacts, but smevals doesn't read them) | baseline vs routed USD, saved %, break-even request count |
+| Latency | per-Run `duration_seconds`, recorded and shown in the report | p50 / p95 / p99 / mean across the workload |
 | Reporting | terminal, JSON, local viewer, static HTML | Markdown + JSON + CSV sweep |
 | Agent onboarding | `smevals docs` | not yet — on the roadmap, borrowed from smevals |
 | Config format | YAML | JSON rubrics + Python policies + JSONL workloads |
@@ -88,6 +88,12 @@ so they can't contaminate a capability judgment, which is right when you're aski
 model can do. Instar *counts* them, because when you're deciding whether to put a
 provider in front of production traffic, a backend that errors 4% of the time has told
 you something decision-relevant. Different questions, defensibly different answers.
+
+**On timing.** smevals is not blind to latency — every Run records `duration_seconds`
+alongside its exit code, and the report surfaces it. What it doesn't do is aggregate
+across runs, which is where the decision-relevant question lives: a mean hides the tail
+your users actually feel, so Instar reports p50/p95/p99 over the whole workload. Same
+observation, different altitude.
 
 **On grading strictness.** It would be wrong to say smevals averages away failures — it
 doesn't. Within a Run, any failed Check fails the Grade outright, which is strict. The
@@ -174,5 +180,6 @@ compose with them than lose slowly to all four.
 - A worked example of reading a verdict *wrongly* —
   [`CASE-STUDY-Qwen-Triage.md`](CASE-STUDY-Qwen-Triage.md)
 
-*Written against smevals as of 2026-08-06. If something here has gone stale or reads
-unfairly, please open an issue — we'd rather fix it than leave it wrong.*
+*Written against the smevals source as of 2026-08-06, and checked by running its example
+haiku suite (two models, six runs, static build). If something here has gone stale or
+reads unfairly, please open an issue — we'd rather fix it than leave it wrong.*
