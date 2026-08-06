@@ -100,6 +100,11 @@ select = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+# Ruff formats Python fenced in Markdown as of 0.14. Our docs are teaching
+# material: snippets use hand-aligned trailing comments and wrapped signatures
+# that read better than the formatter's output, and some are deliberate
+# fragments rather than real source. Format the src tree, not the prose.
+exclude = ["**/*.md"]
 
 # ── mypy (strict on src, loose on tests) ────────────────────────────────
 
