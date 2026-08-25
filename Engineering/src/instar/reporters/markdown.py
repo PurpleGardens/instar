@@ -301,6 +301,34 @@ def report_arms(
             )
     lines += [
         "",
+        "## Quality",
+        "",
+        f"Relative to `{result.baseline}`, 1.0 = as good. PASS 1.0 / MARGINAL 0.5 / FAIL 0.0.",
+        "",
+        "| arm | quality | scored | PASS | MARGINAL | FAIL |",
+        "|---|---|---|---|---|---|",
+    ]
+    for s in result.arms:
+        if s.name == result.baseline:
+            lines.append(f"| {s.name} | — (baseline) | | | | |")
+        elif s.quality_mean is None:
+            lines.append(f"| {s.name} | **unscored** | 0 | | | |")
+        else:
+            n_pass = sum(1 for x in s.quality_scores if x >= 0.99)
+            n_fail = sum(1 for x in s.quality_scores if x <= 0.01)
+            n_marg = s.quality_n - n_pass - n_fail
+            lines.append(
+                f"| {s.name} | {s.quality_mean:.3f} | {s.quality_n} | "
+                f"{n_pass} | {n_marg} | {n_fail} |"
+            )
+    lines += [
+        "",
+        "_`unscored` is not a pass. An LLM judge is itself a model whose "
+        "judgement needs validating against hand-graded examples before a "
+        "number from it is quoted._",
+    ]
+    lines += [
+        "",
         "_`provider_reported` is what the endpoint charged; `computed` is our "
         "pricing table's estimate; `unavailable` means the cost columns are "
         "missing, not zero._",

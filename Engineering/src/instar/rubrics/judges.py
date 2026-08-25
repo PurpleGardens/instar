@@ -174,6 +174,96 @@ class LLMJudge(Judge):
         return JudgeResult(0.5, f"llm judge: unparsed verdict {verdict[:20]!r}")
 
 
+class BlindPairwiseJudge(Judge):
+    """:class:`LLMJudge` with the labels removed and the positions shuffled.
+
+    :class:`LLMJudge` tells the judge outright which answer came from the
+    premium model. That is a hint about the answer it is being asked to
+    evaluate, and a model that has been told "this one is the expensive one"
+    has a reason to prefer it that has nothing to do with the text. Position
+    also matters: LLM judges are known to favour whichever candidate they read
+    first.
+
+    This judge removes both cues. The two answers are presented as "Answer 1"
+    and "Answer 2" with no provenance, and which one goes first is decided by a
+    hash of the sample id — deterministic, so a run is reproducible, but
+    uncorrelated with which arm produced it.
+
+    It is not a replacement for :class:`LLMJudge` so much as a **control on
+    it**. Run both: if they agree, the quality number is robust to labelling
+    bias; if they diverge, you have learned something about your judge rather
+    than about your models, and neither number should be quoted until you know
+    which.
+
+    The same caveat applies as to any LLM judge — validate against hand-graded
+    examples before trusting it — plus one more: a judge from the same model
+    family as one of the arms may favour its own house style, and blinding does
+    not fix that. Only a judge from a different family does.
+    """
+
+    name = "blind-pairwise"
+
+    SYSTEM_PROMPT = (
+        "You are a strict evaluator. You are shown a TASK and two AI answers to "
+        "it. You do not know which model produced either answer, and they are "
+        "not in any meaningful order. Judge only the text.\n"
+        "Decide whether ANSWER B is good enough to ship to the user in place of "
+        "ANSWER A. Reply with EXACTLY ONE word:\n"
+        "PASS - as good as answer A; ship it.\n"
+        "MARGINAL - usable but clearly worse than A; the user would likely refine it.\n"
+        "FAIL - wrong, off-target, or unusable; would have to be redone.\n"
+        "Reply with only that one word."
+    )
+
+    def __init__(self, judge_backend: Backend, judge_model: str) -> None:
+        self.judge_backend = judge_backend
+        self.judge_model = judge_model
+
+    @staticmethod
+    def _first_is_baseline(sample_id: str) -> bool:
+        """Deterministic coin flip from the sample id.
+
+        Deterministic so the same run reproduces; hashed so the result is
+        uncorrelated with anything about the arms. ``hash()`` is salted per
+        process and would break reproducibility, hence sha256.
+        """
+        digest = hashlib.sha256(sample_id.encode("utf-8")).digest()
+        return digest[0] % 2 == 0
+
+    def score(
+        self, sample: TrafficSample, strong: CompletionResult, weak: CompletionResult
+    ) -> JudgeResult:
+        baseline_first = self._first_is_baseline(sample.id)
+        first, second = (strong, weak) if baseline_first else (weak, strong)
+        # A and B name POSITIONS, and the system prompt asks about "B in place
+        # of A". So the labels have to follow the shuffle: whichever position
+        # holds the baseline is A.
+        label_first, label_second = ("A", "B") if baseline_first else ("B", "A")
+        prompt = (
+            f"TASK (feature={sample.feature}):\n{LLMJudge._task_text(sample)}\n\n"
+            f"ANSWER {label_first}:\n{first.text}\n\n"
+            f"ANSWER {label_second}:\n{second.text}\n\nVerdict:"
+        )
+        probe = TrafficSample(
+            id=f"blindjudge-{sample.id}",
+            feature="judge",
+            system=self.SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=8,
+        )
+        result = self.judge_backend.complete(probe, self.judge_model)
+        if not result.ok:
+            return JudgeResult(0.0, f"judge call failed: {result.error}")
+        verdict = (result.text or "").strip().upper()
+        if "FAIL" in verdict:
+            return JudgeResult(0.0, "blind judge: FAIL")
+        if "MARGINAL" in verdict:
+            return JudgeResult(0.5, "blind judge: MARGINAL (would likely induce a retry)")
+        if "PASS" in verdict:
+            return JudgeResult(1.0, "blind judge: PASS")
+        return JudgeResult(0.5, f"blind judge: unparsed verdict {verdict[:20]!r}")
+
+
 class AutoJudge(Judge):
     """Dispatch each sample to the judge that fits it.
 

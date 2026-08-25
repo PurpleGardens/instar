@@ -46,7 +46,13 @@ from instar.reporters import (
     report_sweep,
 )
 from instar.rubrics.base import Judge
-from instar.rubrics.judges import AutoJudge, LabelMatchJudge, LLMJudge, MockJudge
+from instar.rubrics.judges import (
+    AutoJudge,
+    BlindPairwiseJudge,
+    LabelMatchJudge,
+    LLMJudge,
+    MockJudge,
+)
 from instar.rubrics.spec import FAIL, MARGINAL, Rubric
 
 # Undated model ids on purpose — dated snapshot ids are a recurring 404 source.
@@ -368,12 +374,30 @@ def _cmd_arms(args: argparse.Namespace) -> int:
         arms = [_build_arm(_parse_arm_spec(a), extra_body=extra_body) for a in args.arm]
 
     pricing = load_pricing(args.pricing) if args.pricing else None
+
+    judge: Judge | None = None
+    if args.judge:
+        if mock:
+            judge = MockJudge()
+        else:
+            judge_backend: Backend = (
+                OpenAICompatBackend(args.judge_url, name="judge", api_key_env=args.judge_key_env)
+                if args.judge_url
+                else AnthropicBackend(name="judge")
+            )
+            judge = (
+                BlindPairwiseJudge(judge_backend, args.judge_model)
+                if args.blind_judge
+                else LLMJudge(judge_backend, args.judge_model)
+            )
+
     result = run_arms(
         samples,
         arms=arms,
         repeats=args.repeats,
         pricing=pricing,
         baseline=args.baseline,
+        judge=judge,
     )
     label = args.label or f"arms-{'mock' if mock else 'live'}"
     d = report_arms(result, label, mock=mock, runs_dir=args.runs_dir)
@@ -384,7 +408,12 @@ def _cmd_arms(args: argparse.Namespace) -> int:
             if s.cost_source == "unavailable"
             else f"${s.cost_per_1k_calls_usd:.4f}/1k ({s.cost_source})"
         )
-        print(f"  {s.name:<12} p50 {s.p50_ms:7.1f}ms  {cost}")
+        qual = (
+            "  quality unscored"
+            if s.quality_mean is None
+            else f"  quality {s.quality_mean:.3f} (n={s.quality_n})"
+        )
+        print(f"  {s.name:<14} p50 {s.p50_ms:7.1f}ms  {cost}{qual}")
     for w in result.warnings:
         print(f"  warning: {w}", file=sys.stderr)
     return 1 if any(s.n_err for s in result.arms) else 0
@@ -468,6 +497,20 @@ def build_parser() -> argparse.ArgumentParser:
         '\'{"provider":{"sort":"price","zdr":true}}\'',
     )
     arms.add_argument("--pricing", help="pricing table JSON for arms that report no cost")
+    arms.add_argument(
+        "--judge",
+        action="store_true",
+        help="score every non-baseline arm's output against the baseline's",
+    )
+    arms.add_argument(
+        "--blind-judge",
+        action="store_true",
+        help="hide which answer came from which arm and shuffle their order; "
+        "run alongside the default judge as a control on labelling bias",
+    )
+    arms.add_argument("--judge-model", default=DEFAULT_STRONG, help="model that judges")
+    arms.add_argument("--judge-url", help="OpenAI-compatible endpoint for the judge")
+    arms.add_argument("--judge-key-env", help="env var holding the judge's API key")
     arms.add_argument("--repeats", type=int, default=1, help="replay the workload N times per arm")
 
     gateway = sub.add_parser(

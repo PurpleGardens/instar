@@ -34,6 +34,7 @@ from instar.core.cost import PRICING, call_cost_usd
 from instar.core.gateway import percentile
 from instar.core.traffic import TrafficSample
 from instar.providers.base import Backend, CompletionResult
+from instar.rubrics.base import Judge
 
 # How a cost figure was arrived at. Worth recording per arm because a run that
 # mixes measured and estimated costs is not comparing like with like, and a
@@ -68,6 +69,13 @@ class ArmStats:
     cost_source: str
     input_tokens: int
     output_tokens: int
+    # Quality relative to the baseline arm, in [0, 1], when a judge was run.
+    # None on the baseline itself (nothing to compare against) and on every arm
+    # when no judge was supplied. None means UNSCORED, which is not a pass —
+    # the distinction a cost report most often loses.
+    quality_mean: float | None = None
+    quality_n: int = 0
+    quality_scores: list[float] = field(default_factory=list)
     # Models that actually served, when the arm's backend substituted. Empty
     # for a well-behaved single-model arm; non-empty is a finding, not noise.
     served_models: list[str] = field(default_factory=list)
@@ -161,6 +169,31 @@ def summarize_arm(
     )
 
 
+def judge_arm(
+    judge: Judge,
+    samples: list[TrafficSample],
+    baseline_results: list[CompletionResult],
+    arm_results: list[CompletionResult],
+) -> tuple[float | None, list[float]]:
+    """Score one arm's outputs against the baseline's, call for call.
+
+    The three lists are positionally aligned by construction — :func:`run_arms`
+    drives every arm through the same (repeat, sample) sequence — so index ``i``
+    is the same prompt answered by each arm.
+
+    A pair where either side failed is skipped rather than scored 0.0: a network
+    error is not a quality signal, and folding it in would let an unreliable arm
+    look like a *bad* arm instead of a broken one. Those two need different fixes.
+    """
+    scores: list[float] = []
+    for sample, base, arm in zip(samples, baseline_results, arm_results, strict=True):
+        if not base.ok or not arm.ok:
+            continue
+        scores.append(judge.score(sample, base, arm).score)
+    mean = (sum(scores) / len(scores)) if scores else None
+    return mean, scores
+
+
 @dataclass
 class ArmsResult:
     """An N-way comparison, read against whichever arm is the baseline."""
@@ -204,6 +237,7 @@ class ArmsResult:
                     (a.output_tokens / base.output_tokens) if base.output_tokens else 0.0
                 ),
                 "cost_delta_pct": None,
+                "quality_mean": a.quality_mean,
             }
             if (
                 base.cost_source != COST_UNAVAILABLE
@@ -235,6 +269,7 @@ def run_arms(
     repeats: int = 1,
     pricing: dict[str, tuple[float, float]] | None = None,
     baseline: str | None = None,
+    judge: Judge | None = None,
 ) -> ArmsResult:
     """Replay ``samples`` through every arm, interleaved, and compare.
 
@@ -248,6 +283,10 @@ def run_arms(
             backend does not report cost.
         baseline: which arm the deltas are measured against. Defaults to the
             first, which is the natural reading of "A/B/C".
+        judge: optional. Scores every other arm's output against the baseline's
+            on the same call. Without one the run reports cost and latency and
+            says nothing about quality — which is half an answer, and the half
+            that makes a cheap arm look unambiguously good.
     """
     if repeats < 1:
         raise ValueError("repeats must be >= 1")
@@ -261,12 +300,26 @@ def run_arms(
         raise ValueError(f"baseline {base_name!r} is not one of {names}")
 
     collected: dict[str, list[CompletionResult]] = {a.name: [] for a in arms}
+    # The exact (repeat, sample) sequence every arm walked, kept so a judge can
+    # line up call i across arms without re-deriving the ordering.
+    sequence: list[TrafficSample] = []
     for _ in range(repeats):
         for sample in samples:
+            sequence.append(sample)
             for arm in arms:
                 collected[arm.name].append(arm.backend.complete(sample, arm.model))
 
     stats = [summarize_arm(a, collected[a.name], pricing=pricing) for a in arms]
+
+    if judge is not None:
+        base_results = collected[base_name]
+        for s in stats:
+            if s.name == base_name:
+                continue
+            mean, scores = judge_arm(judge, sequence, base_results, collected[s.name])
+            s.quality_mean = mean
+            s.quality_n = len(scores)
+            s.quality_scores = scores
 
     warnings: list[str] = []
     total_calls = len(samples) * repeats
@@ -300,6 +353,12 @@ def run_arms(
                 f"{base_name} - raw latency percentiles are not comparable; "
                 f"read ms_per_output_token instead"
             )
+
+    if judge is None and len(stats) > 1:
+        warnings.append(
+            "no judge supplied - this run measures cost and latency only. A "
+            "cheaper arm is not a better arm until its output has been scored"
+        )
 
     sources = {s.cost_source for s in stats if s.cost_source != COST_UNAVAILABLE}
     if len(sources) > 1:

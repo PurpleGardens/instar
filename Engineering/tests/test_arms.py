@@ -326,3 +326,122 @@ class TestLatencyNormalization:
         # Half the wall-clock, half the tokens -> identical per-token speed.
         assert d["ms_per_output_token_delta"] == pytest.approx(0.0, abs=1e-6)
         assert d["latency_p50_delta_ms"] < 0  # the misleading raw number
+
+
+class TestJudging:
+    """Cost without quality is the half of the answer that flatters cheap arms."""
+
+    class _FixedJudge:
+        name = "fixed"
+
+        def __init__(self, score: float) -> None:
+            self._score = score
+            self.calls: list[str] = []
+
+        def score(self, sample, strong, weak):
+            from instar.rubrics.base import JudgeResult
+
+            self.calls.append(sample.id)
+            return JudgeResult(self._score, "fixed")
+
+    def _arms(self):
+        return [
+            Arm("base", MockBackend("base"), "strong"),
+            Arm("other", MockBackend("other"), "cheap"),
+        ]
+
+    def test_no_judge_means_unscored_not_perfect(self):
+        r = run_arms(_samples(4), arms=self._arms(), pricing=PRICING)
+        assert r.by_name("other").quality_mean is None
+
+    def test_missing_judge_is_warned_about(self):
+        r = run_arms(_samples(4), arms=self._arms(), pricing=PRICING)
+        assert any("not a better arm until" in w for w in r.warnings)
+
+    def test_judge_scores_every_non_baseline_arm(self):
+        j = self._FixedJudge(0.5)
+        r = run_arms(_samples(4), arms=self._arms(), pricing=PRICING, judge=j)
+        assert r.by_name("other").quality_mean == pytest.approx(0.5)
+        assert r.by_name("other").quality_n == 4
+
+    def test_baseline_is_never_scored_against_itself(self):
+        j = self._FixedJudge(1.0)
+        r = run_arms(_samples(4), arms=self._arms(), pricing=PRICING, judge=j)
+        assert r.by_name("base").quality_mean is None
+
+    def test_judge_sees_every_repeat_not_just_the_first(self):
+        j = self._FixedJudge(1.0)
+        run_arms(_samples(3), arms=self._arms(), repeats=4, pricing=PRICING, judge=j)
+        assert len(j.calls) == 12
+
+    def test_failed_calls_are_skipped_not_scored_zero(self):
+        """A network error is not a quality signal; they need different fixes."""
+
+        class _Flaky(Backend):
+            name = "flaky"
+
+            def __init__(self) -> None:
+                self.n = 0
+
+            def complete(self, sample, model):
+                self.n += 1
+                if self.n == 1:
+                    return CompletionResult.failure(model, "boom")
+                return _result(model=model)
+
+        arms = [Arm("base", MockBackend("base"), "strong"), Arm("other", _Flaky(), "cheap")]
+        j = self._FixedJudge(1.0)
+        r = run_arms(_samples(4), arms=arms, pricing=PRICING, judge=j)
+        assert r.by_name("other").quality_n == 3  # not 4, and not a 0.0 dragging the mean
+        assert r.by_name("other").quality_mean == pytest.approx(1.0)
+
+    def test_quality_reaches_the_deltas(self):
+        j = self._FixedJudge(0.75)
+        r = run_arms(_samples(4), arms=self._arms(), pricing=PRICING, judge=j)
+        assert r.deltas()[0]["quality_mean"] == pytest.approx(0.75)
+
+
+class TestBlindJudge:
+    def test_position_is_deterministic_for_a_given_sample_id(self):
+        from instar.rubrics.judges import BlindPairwiseJudge
+
+        first = BlindPairwiseJudge._first_is_baseline("sample-42")
+        assert first == BlindPairwiseJudge._first_is_baseline("sample-42")
+
+    def test_position_varies_across_sample_ids(self):
+        from instar.rubrics.judges import BlindPairwiseJudge
+
+        flips = {BlindPairwiseJudge._first_is_baseline(f"s{i}") for i in range(20)}
+        assert flips == {True, False}
+
+    def test_prompt_carries_no_provenance(self):
+        from instar.rubrics.judges import BlindPairwiseJudge
+
+        assert "STRONG" not in BlindPairwiseJudge.SYSTEM_PROMPT
+        assert "WEAK" not in BlindPairwiseJudge.SYSTEM_PROMPT
+        assert "premium" not in BlindPairwiseJudge.SYSTEM_PROMPT
+
+    def test_labels_follow_the_shuffle(self):
+        """A names the baseline wherever it landed, or the verdict inverts."""
+        from instar.providers.base import Backend
+        from instar.rubrics.judges import BlindPairwiseJudge
+
+        seen = {}
+
+        class _Capture(Backend):
+            name = "cap"
+
+            def complete(self, sample, model):
+                seen["prompt"] = sample.messages[0]["content"]
+                return _result(text="PASS", model=model)
+
+        j = BlindPairwiseJudge(_Capture(), "judge-model")
+        for sid in ("s0", "s1", "s2", "s3"):
+            sample = TrafficSample(id=sid, feature="f", messages=[{"role": "user", "content": "q"}])
+            j.score(sample, _result(text="BASELINE_TEXT"), _result(text="ARM_TEXT"))
+            p = seen["prompt"]
+            # Whichever position the baseline occupies, it must be labelled A.
+            a_idx, b_idx = p.index("ANSWER A:"), p.index("ANSWER B:")
+            base_idx, arm_idx = p.index("BASELINE_TEXT"), p.index("ARM_TEXT")
+            assert (base_idx > a_idx) == (base_idx - a_idx < 40)
+            assert (arm_idx > b_idx) == (arm_idx - b_idx < 40)
