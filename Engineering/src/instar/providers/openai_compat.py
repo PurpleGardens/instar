@@ -45,6 +45,18 @@ class OpenAICompatBackend(Backend):
             ``api_key`` is not given.
         timeout_s: Per-request timeout.
         extra_headers: Additional headers, e.g. OpenRouter's attribution pair.
+        extra_body: Extra top-level request fields, merged into every payload.
+            This is how endpoint-specific controls reach the wire without the
+            harness growing a vendor-shaped API: OpenRouter's routing and
+            privacy preferences go here as
+            ``{"provider": {"sort": "price", "zdr": True}}``. Keys the harness
+            sets itself (``model``, ``messages``, ``max_tokens``) win, so a
+            stray override cannot silently change what is being measured.
+        request_usage_accounting: Ask the endpoint to return cost alongside
+            tokens (OpenRouter's ``usage: {include: true}``). Harmless on
+            endpoints that ignore unknown fields, and the only way to get a
+            router's real per-call charge. Turn it off if a strict endpoint
+            rejects the field.
     """
 
     def __init__(
@@ -56,6 +68,8 @@ class OpenAICompatBackend(Backend):
         api_key_env: str | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         extra_headers: dict[str, str] | None = None,
+        extra_body: dict[str, Any] | None = None,
+        request_usage_accounting: bool = True,
     ) -> None:
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -63,6 +77,8 @@ class OpenAICompatBackend(Backend):
         self.api_key_env = api_key_env
         self.timeout_s = timeout_s
         self.extra_headers = dict(extra_headers or {})
+        self.extra_body = dict(extra_body or {})
+        self.request_usage_accounting = request_usage_accounting
 
     @property
     def endpoint(self) -> str:
@@ -84,11 +100,16 @@ class OpenAICompatBackend(Backend):
         if sample.system:
             messages.append({"role": "system", "content": sample.system})
         messages.extend(sample.messages)
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": sample.max_tokens,
-        }
+        payload: dict[str, Any] = dict(self.extra_body)
+        if self.request_usage_accounting:
+            payload.setdefault("usage", {"include": True})
+        payload.update(
+            {
+                "model": model,
+                "messages": messages,
+                "max_tokens": sample.max_tokens,
+            }
+        )
         if sample.temperature is not None:
             payload["temperature"] = sample.temperature
         return payload
@@ -136,9 +157,27 @@ class OpenAICompatBackend(Backend):
         usage = data.get("usage") or {}
         return CompletionResult(
             text=text if isinstance(text, str) else str(text),
+            # The model that ANSWERED, which for a router is not always the one
+            # asked for — a fallback chain or an auto-router may substitute.
+            # Reporting the request would hide the substitution being measured.
             model=str(data.get("model") or model),
             input_tokens=int(usage.get("prompt_tokens", 0) or 0),
             output_tokens=int(usage.get("completion_tokens", 0) or 0),
             latency_s=dt,
             ok=True,
+            cost_usd=_reported_cost(usage),
         )
+
+
+def _reported_cost(usage: dict[str, Any]) -> float | None:
+    """The endpoint's own USD figure for a call, if it gave a usable one.
+
+    Absent, non-numeric, or negative all mean "unknown" and yield None, so a
+    malformed field degrades to the pricing-table path rather than poisoning a
+    cost report. ``bool`` is excluded explicitly because it is an ``int``
+    subclass in Python, and ``"cost": true`` must never become $1.00.
+    """
+    cost = usage.get("cost")
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+        return None
+    return float(cost) if cost >= 0 else None

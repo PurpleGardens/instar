@@ -32,6 +32,18 @@ class CompletionResult:
     latency_s: float
     ok: bool = True
     error: str | None = None
+    # What the provider says this call actually cost, in USD, when it says so
+    # at all. Most endpoints don't: a frontier API returns tokens and leaves
+    # the arithmetic to you, so this stays None and the harness prices the
+    # call from a pricing table. Aggregators are the exception — OpenRouter
+    # returns ``usage.cost`` because it alone knows which upstream host served
+    # the request and at what rate.
+    #
+    # Where it IS reported it should win, because a pricing table cannot
+    # honestly cover a router: 400+ models across 70+ hosts at prices that
+    # move weekly. None means "unknown", never "free" — see
+    # :func:`instar.core.arms.resolve_arm_cost`.
+    cost_usd: float | None = None
 
     @classmethod
     def failure(cls, model: str, error: str, latency_s: float = 0.0) -> CompletionResult:
@@ -44,6 +56,7 @@ class CompletionResult:
             latency_s=latency_s,
             ok=False,
             error=error,
+            cost_usd=None,
         )
 
 

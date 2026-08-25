@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from instar.reporters.markdown import (
     DEFAULT_RUNS_DIR,
+    report_arms,
     report_gateway,
     report_route,
     report_sweep,
@@ -12,6 +13,7 @@ from instar.reporters.markdown import (
 
 __all__ = [
     "DEFAULT_RUNS_DIR",
+    "report_arms",
     "report_gateway",
     "report_route",
     "report_sweep",
