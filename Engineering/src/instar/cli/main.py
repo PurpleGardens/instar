@@ -7,6 +7,9 @@ Two subcommands:
   saved and quality given up. Sweep a threshold to draw the cost/quality curve.
 - ``instar gateway`` — replay a workload through two gateways or endpoints;
   compare per-call latency.
+- ``instar arms`` — replay a workload through N arms, each with its own
+  endpoint and model; compare latency and cost. The A/B/C shape: direct,
+  through a router at the same model, through a router at a cheaper one.
 
 Both default to **mock mode**, which is hermetic: no API keys, no network, no
 spend. Pass ``--live`` to use real endpoints.
@@ -18,10 +21,13 @@ publish a report built on partial data.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
+from instar.core.arms import Arm, run_arms
 from instar.core.catalog import FeatureCatalog
 from instar.core.cost import load_pricing
 from instar.core.gateway import run_gateway
@@ -32,9 +38,21 @@ from instar.providers.anthropic import AnthropicBackend
 from instar.providers.base import Backend
 from instar.providers.mock import MockBackend
 from instar.providers.openai_compat import OpenAICompatBackend
-from instar.reporters import DEFAULT_RUNS_DIR, report_gateway, report_route, report_sweep
+from instar.reporters import (
+    DEFAULT_RUNS_DIR,
+    report_arms,
+    report_gateway,
+    report_route,
+    report_sweep,
+)
 from instar.rubrics.base import Judge
-from instar.rubrics.judges import AutoJudge, LabelMatchJudge, LLMJudge, MockJudge
+from instar.rubrics.judges import (
+    AutoJudge,
+    BlindPairwiseJudge,
+    LabelMatchJudge,
+    LLMJudge,
+    MockJudge,
+)
 from instar.rubrics.spec import FAIL, MARGINAL, Rubric
 
 # Undated model ids on purpose — dated snapshot ids are a recurring 404 source.
@@ -289,6 +307,118 @@ def _cmd_gateway(args: argparse.Namespace) -> int:
     return 1 if (result.a.n_err or result.b.n_err) else 0
 
 
+def _parse_arm_spec(spec: str) -> dict[str, str]:
+    """Parse ``name=A,url=...,model=...,key_env=...`` into a dict.
+
+    A flat key=value list rather than JSON because these go on a command line
+    by hand. ``url`` may be omitted for the special value ``direct``, which
+    selects the native Anthropic backend instead of an OpenAI-compatible one.
+    """
+    out: dict[str, str] = {}
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise SystemExit(f"instar: bad --arm segment {part!r}; expected key=value")
+        k, v = part.split("=", 1)
+        out[k.strip()] = v.strip()
+    if "name" not in out:
+        raise SystemExit(f"instar: --arm {spec!r} is missing name=")
+    if "model" not in out:
+        raise SystemExit(f"instar: --arm {spec!r} is missing model=")
+    return out
+
+
+def _build_arm(spec: dict[str, str], *, extra_body: dict[str, Any] | None) -> Arm:
+    url = spec.get("url", "")
+    backend: Backend
+    if url in ("", "direct", "anthropic"):
+        backend = AnthropicBackend(name=spec["name"])
+    else:
+        backend = OpenAICompatBackend(
+            url,
+            name=spec["name"],
+            api_key_env=spec.get("key_env"),
+            extra_body=extra_body,
+        )
+    return Arm(name=spec["name"], backend=backend, model=spec["model"])
+
+
+def _cmd_arms(args: argparse.Namespace) -> int:
+    samples, _, _ = _load_inputs(args.traffic, None, None)
+    mock = not args.live
+
+    extra_body: dict[str, Any] | None = None
+    if args.extra_body:
+        try:
+            parsed = json.loads(args.extra_body)
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"instar: --extra-body is not valid JSON: {e}") from e
+        if not isinstance(parsed, dict):
+            raise SystemExit("instar: --extra-body must be a JSON object")
+        extra_body = parsed
+
+    arms: list[Arm]
+    if mock:
+        # Three arms with different simulated latency so the report shape is
+        # visible without spending anything.
+        arms = [
+            Arm("arm-a", MockBackend("arm-a", latency_s=0.010), MOCK_STRONG_MODEL),
+            Arm("arm-b", MockBackend("arm-b", latency_s=0.013), MOCK_STRONG_MODEL),
+            Arm("arm-c", MockBackend("arm-c", latency_s=0.011), MOCK_WEAK_MODEL),
+        ]
+    else:
+        if len(args.arm) < 2:
+            raise SystemExit("instar: --live arms runs need at least two --arm specs")
+        arms = [_build_arm(_parse_arm_spec(a), extra_body=extra_body) for a in args.arm]
+
+    pricing = load_pricing(args.pricing) if args.pricing else None
+
+    judge: Judge | None = None
+    if args.judge:
+        if mock:
+            judge = MockJudge()
+        else:
+            judge_backend: Backend = (
+                OpenAICompatBackend(args.judge_url, name="judge", api_key_env=args.judge_key_env)
+                if args.judge_url
+                else AnthropicBackend(name="judge")
+            )
+            judge = (
+                BlindPairwiseJudge(judge_backend, args.judge_model)
+                if args.blind_judge
+                else LLMJudge(judge_backend, args.judge_model)
+            )
+
+    result = run_arms(
+        samples,
+        arms=arms,
+        repeats=args.repeats,
+        pricing=pricing,
+        baseline=args.baseline,
+        judge=judge,
+    )
+    label = args.label or f"arms-{'mock' if mock else 'live'}"
+    d = report_arms(result, label, mock=mock, runs_dir=args.runs_dir)
+    print(f"arms -> {d}")
+    for s in result.arms:
+        cost = (
+            "cost unknown"
+            if s.cost_source == "unavailable"
+            else f"${s.cost_per_1k_calls_usd:.4f}/1k ({s.cost_source})"
+        )
+        qual = (
+            "  quality unscored"
+            if s.quality_mean is None
+            else f"  quality {s.quality_mean:.3f} (n={s.quality_n})"
+        )
+        print(f"  {s.name:<14} p50 {s.p50_ms:7.1f}ms  {cost}{qual}")
+    for w in result.warnings:
+        print(f"  warning: {w}", file=sys.stderr)
+    return 1 if any(s.n_err for s in result.arms) else 0
+
+
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--traffic", help="workload fixture (.jsonl); defaults to a sample if present")
     p.add_argument("--live", action="store_true", help="use real endpoints instead of mocks")
@@ -344,6 +474,45 @@ def build_parser() -> argparse.ArgumentParser:
     route.add_argument("--weak-key-env", help="env var holding the weak arm's API key")
     route.set_defaults(func=_cmd_route)
 
+    arms = sub.add_parser(
+        "arms",
+        help="replay a workload through N arms; compare latency and cost",
+    )
+    _add_common(arms)
+    arms.add_argument(
+        "--arm",
+        action="append",
+        default=[],
+        metavar="name=A,url=...,model=...,key_env=...",
+        help="one arm; repeat for each. url=direct uses the native Anthropic "
+        "backend. Ignored in mock mode.",
+    )
+    arms.add_argument(
+        "--baseline",
+        help="arm name the deltas are measured against (default: the first arm)",
+    )
+    arms.add_argument(
+        "--extra-body",
+        help="JSON merged into every OpenAI-compatible request, e.g. "
+        '\'{"provider":{"sort":"price","zdr":true}}\'',
+    )
+    arms.add_argument("--pricing", help="pricing table JSON for arms that report no cost")
+    arms.add_argument(
+        "--judge",
+        action="store_true",
+        help="score every non-baseline arm's output against the baseline's",
+    )
+    arms.add_argument(
+        "--blind-judge",
+        action="store_true",
+        help="hide which answer came from which arm and shuffle their order; "
+        "run alongside the default judge as a control on labelling bias",
+    )
+    arms.add_argument("--judge-model", default=DEFAULT_STRONG, help="model that judges")
+    arms.add_argument("--judge-url", help="OpenAI-compatible endpoint for the judge")
+    arms.add_argument("--judge-key-env", help="env var holding the judge's API key")
+    arms.add_argument("--repeats", type=int, default=1, help="replay the workload N times per arm")
+
     gateway = sub.add_parser(
         "gateway", help="compare two gateways or endpoints on per-call latency"
     )
@@ -359,6 +528,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--repeats", type=int, default=1, help="replay the workload N times (latency is noisy)"
     )
     gateway.set_defaults(func=_cmd_gateway)
+    arms.set_defaults(func=_cmd_arms)
 
     return p
 

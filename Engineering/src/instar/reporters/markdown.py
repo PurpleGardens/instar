@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from instar.core.arms import COST_UNAVAILABLE, ArmsResult
 from instar.core.gateway import GatewayResult
 from instar.core.route import RouteResult, SweepPoint
 from instar.rubrics.spec import RubricVerdict
@@ -246,6 +247,114 @@ def report_sweep(
                 ]
             )
     return d
+
+
+def report_arms(
+    result: ArmsResult,
+    label: str,
+    *,
+    mock: bool,
+    runs_dir: str | Path = DEFAULT_RUNS_DIR,
+) -> Path:
+    """Write the N-way arms comparison: latency and cost, per arm."""
+    lines = [
+        f"# Arms comparison — {'MOCK' if mock else 'LIVE'}",
+        "",
+        f"calls per arm: {result.n} · baseline: `{result.baseline}`",
+        "",
+    ]
+    if mock:
+        lines += [MOCK_BANNER, ""]
+    lines += _warning_block(result.warnings)
+    lines += [
+        "## Latency",
+        "",
+        "| arm | model | ok | failed | p50 ms | p95 ms | p99 ms | mean ms | out tok | ms/out tok |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for s in result.arms:
+        lines.append(
+            f"| {s.name} | `{s.model}` | {s.n_ok} | {s.n_err} | {s.p50_ms:.1f} | "
+            f"{s.p95_ms:.1f} | {s.p99_ms:.1f} | {s.mean_ms:.1f} | {s.output_tokens} | "
+            f"{s.ms_per_output_token:.1f} |"
+        )
+    lines += [
+        "",
+        "_Most of a generative call is spent emitting tokens, so raw percentiles "
+        "compare arms only when their output lengths do. When `out tok` differs "
+        "materially, `ms/out tok` is the length-independent view._",
+    ]
+    lines += [
+        "",
+        "## Cost",
+        "",
+        "| arm | total USD | USD / 1k calls | source |",
+        "|---|---|---|---|",
+    ]
+    for s in result.arms:
+        if s.cost_source == COST_UNAVAILABLE:
+            lines.append(f"| {s.name} | unknown | unknown | {s.cost_source} |")
+        else:
+            lines.append(
+                f"| {s.name} | ${s.cost_usd:.6f} | ${s.cost_per_1k_calls_usd:.4f} | "
+                f"{s.cost_source} |"
+            )
+    lines += [
+        "",
+        "## Quality",
+        "",
+        f"Relative to `{result.baseline}`, 1.0 = as good. PASS 1.0 / MARGINAL 0.5 / FAIL 0.0.",
+        "",
+        "| arm | quality | scored | PASS | MARGINAL | FAIL |",
+        "|---|---|---|---|---|---|",
+    ]
+    for s in result.arms:
+        if s.name == result.baseline:
+            lines.append(f"| {s.name} | — (baseline) | | | | |")
+        elif s.quality_mean is None:
+            lines.append(f"| {s.name} | **unscored** | 0 | | | |")
+        else:
+            n_pass = sum(1 for x in s.quality_scores if x >= 0.99)
+            n_fail = sum(1 for x in s.quality_scores if x <= 0.01)
+            n_marg = s.quality_n - n_pass - n_fail
+            lines.append(
+                f"| {s.name} | {s.quality_mean:.3f} | {s.quality_n} | "
+                f"{n_pass} | {n_marg} | {n_fail} |"
+            )
+    lines += [
+        "",
+        "_`unscored` is not a pass. An LLM judge is itself a model whose "
+        "judgement needs validating against hand-graded examples before a "
+        "number from it is quoted._",
+    ]
+    lines += [
+        "",
+        "_`provider_reported` is what the endpoint charged; `computed` is our "
+        "pricing table's estimate; `unavailable` means the cost columns are "
+        "missing, not zero._",
+        "",
+        f"## Against `{result.baseline}`",
+        "",
+        "| arm | p50 Δ ms | p95 Δ ms | ms/out tok Δ | out tok ratio | cost Δ |",
+        "|---|---|---|---|---|---|",
+    ]
+    for d in result.deltas():
+        pct = d["cost_delta_pct"]
+        cost_cell = "n/a" if pct is None else f"{pct:+.1f}%"
+        lines.append(
+            f"| {d['arm']} | {d['latency_p50_delta_ms']:+.1f} | "
+            f"{d['latency_p95_delta_ms']:+.1f} | "
+            f"{d['ms_per_output_token_delta']:+.2f} | "
+            f"{d['output_token_ratio']:.2f}x | {cost_cell} |"
+        )
+    lines += [
+        "",
+        "_Wall-clock from the client, so this includes the network path to each "
+        "endpoint. If the arms are not on comparable footing (one local, one "
+        "across the internet), this measures geography, not software._",
+        "",
+    ]
+    return _write(label, result.to_json(), "\n".join(lines), runs_dir)
 
 
 def report_gateway(

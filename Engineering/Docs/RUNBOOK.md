@@ -18,6 +18,7 @@ Every command below was run against this repository. Output is real, trimmed onl
 6. [Score a classification workload with gold labels](#6-score-a-classification-workload-with-gold-labels)
 7. [Going live](#7-going-live)
 8. [Compare two gateways](#8-compare-two-gateways)
+8b. [Compare three or more arms](#8b-compare-three-or-more-arms-instar-arms)
 9. [Supply your own pricing table](#9-supply-your-own-pricing-table)
 10. [Read a report](#10-read-a-report)
 11. [Interpreting results honestly](#11-interpreting-results-honestly)
@@ -455,6 +456,87 @@ p99 of ten calls is just the slowest call. Treat tail figures as indicative unti
 Latency is wall-clock from the client, so it includes your network path to each endpoint. Comparing a hosted service across the internet against one on localhost measures geography as much as software — put the arms on comparable footing before drawing a conclusion.
 
 Instar takes no view on which gateway you should use and ships no vendor capability matrix. Feature checklists go stale and a vendor's own comparison table is marketing. What a harness can honestly contribute is the number nobody publishes about your traffic: the latency your chosen layer actually adds.
+
+---
+
+## 8b. Compare three or more arms (`instar arms`)
+
+`instar gateway` holds the model fixed across two arms. That cannot express the
+comparison most people actually want, which has three arms and *varies* the
+model on the third:
+
+| arm | what it isolates |
+|---|---|
+| **A** direct to the provider | the baseline you have today |
+| **B** through a router, same model | what the extra hop costs |
+| **C** through a router, cheaper model | what routing saves |
+
+`instar arms` gives every arm its own backend **and its own model**, and reports
+latency and cost per arm plus deltas against a baseline.
+
+```bash
+instar arms --live \
+  --traffic my-workload/my-workload.jsonl \
+  --repeats 5 \
+  --pricing my-pricing.json \
+  --extra-body '{"provider":{"data_collection":"deny","zdr":true}}' \
+  --arm 'name=A-direct,url=direct,model=claude-sonnet-4-5' \
+  --arm 'name=B-router-same,url=https://openrouter.ai/api/v1,key_env=OPENROUTER_API_KEY,model=anthropic/claude-sonnet-4.5' \
+  --arm 'name=C-router-cheap,url=https://openrouter.ai/api/v1,key_env=OPENROUTER_API_KEY,model=deepseek/deepseek-chat'
+```
+
+Notes:
+
+- Each `--arm` is a flat `key=value` list: `name=`, `model=`, and either `url=`
+  (any OpenAI-compatible endpoint) or `url=direct` for the native Anthropic
+  backend. `key_env=` names an *environment variable*, never the token.
+- `--baseline` picks which arm the deltas are measured against. Default: the
+  first, which is the natural reading of "A/B/C".
+- `--extra-body` is merged into every OpenAI-compatible request. It is how
+  endpoint-specific controls reach the wire without the harness growing a
+  vendor-shaped API. Keys the harness owns (`model`, `messages`, `max_tokens`)
+  always win, so a stray override cannot change what is being measured.
+- Arms are interleaved (A, B, C, A, B, C, ...) for the same reason the two-arm
+  runner interleaves.
+
+### Where the cost number comes from
+
+Each arm's cost carries a `cost_source`, and it matters more than the dollar
+figure:
+
+| source | meaning |
+|---|---|
+| `provider_reported` | the endpoint told us what the call cost. A measurement. |
+| `computed` | derived from tokens and your pricing table. An estimate. |
+| `unavailable` | neither was possible. **Not `$0` — missing.** |
+
+Aggregators report real per-call cost (OpenRouter's `usage.cost`) because only
+the router knows which upstream host served the request and at what rate. A
+frontier API does not; it returns tokens and leaves the arithmetic to you.
+
+Three deliberate refusals, all in service of not publishing a confident wrong
+number:
+
+1. An arm that is **partially** reported falls back to the pricing table
+   entirely, rather than summing measured dollars with estimated ones and
+   presenting the total as a measurement.
+2. An arm that is neither reported nor priced is `unavailable`, and the run
+   warns. A silent `$0` is how a cost report ends up flattering whichever arm
+   happens to be unpriced.
+3. A cost delta is **omitted** when either side is unknown, rather than printed
+   as a percentage derived from a zero.
+
+If arms disagree on `cost_source`, the run says so — a comparison that mixes
+measured and estimated cost is not like-for-like, and the totals alone will not
+tell you.
+
+### Model substitution is a finding, not noise
+
+A router may serve a model other than the one requested — a fallback chain
+firing, or an auto-router substituting. When an arm's responses name a different
+model, the run records the served ids and warns. For a router comparison this is
+often the most important thing the run has to tell you, so it is surfaced rather
+than averaged away.
 
 ---
 
