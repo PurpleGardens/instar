@@ -2,6 +2,8 @@
 
 An open-source harness for measuring LLM workloads — cost, quality, and latency — on your own traffic.
 
+> *"Harness" here is the classic test-rig sense — a measurement wrapper around a system-under-test — not the newer "agent harness" (Claude Code, Cursor) that turns a raw model into an agent runtime.*
+
 > **Status:** pre-release (`0.1.0.dev0`, no tagged release yet). The harness core — CLI, provider adapters, routing policies, rubrics, reporters — is runnable today in mock mode and against live providers; the API surface is still unstable. See [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) for the plan.
 
 ## Who it's for
