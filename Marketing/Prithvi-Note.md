@@ -49,7 +49,7 @@ the case where a call isn't practical soon.
 > Wanted to give you this directly before it shows up anywhere public.
 >
 > The measurement harness we've been building now lives in its own repo —
-> `github.com/PurpleBlossomAI/instar`, Apache 2.0, still pre-release. The name comes from
+> `github.com/PurpleGardens/instar`, Apache 2.0, still pre-release. The name comes from
 > biology: an *instar* is the stage between molts, which fit both what the tool measures
 > and the larger theme of organizations changing shape around AI.
 >
@@ -94,7 +94,7 @@ the case where a call isn't practical soon.
 >
 > Good talking. Writing down what we covered so we both have it.
 >
-> - The harness now lives at `github.com/PurpleBlossomAI/instar` — Apache 2.0, pre-release.
+> - The harness now lives at `github.com/PurpleGardens/instar` — Apache 2.0, pre-release.
 >   New harness work goes there. It's a new repo rather than a rename of gateway-lab, so
 >   nothing changed under your remote.
 > - The core was ported over on July 22 as a clean-room re-implementation, and Instar is

@@ -276,7 +276,7 @@ If we optimize for stars we build for the demo. If we optimize for "one customer
 Two repos, deliberately parallel — for a bounded window.
 
 - **`github.com/PurpleBlossomAI/gateway-lab`** — Prithvi's experimental space. Testing, paper-writing. Not under Brian's stewardship day-to-day.
-- **`github.com/PurpleBlossomAI/instar`** — the curated, packaged, adoptable OSS artifact. This repo.
+- **`github.com/PurpleGardens/instar`** — the curated, packaged, adoptable OSS artifact. This repo.
 
 They share design DNA — both are internal Purple Blossom AI work, so patterns can be ported from `gateway-lab` into Instar as clean-room re-implementations (no license issue because we own both). The harness core was ported this way at commit `1b250bf` on 2026-07-22.
 

@@ -49,7 +49,7 @@ Every run writes `result.json`, a Markdown report, and (for sweeps) a CSV.
 
 ```bash
 # from source (v0.1)
-git clone https://github.com/PurpleBlossomAI/instar
+git clone https://github.com/PurpleGardens/instar
 cd instar
 pip install -e .
 ```

@@ -2,7 +2,7 @@
 
 > **TL;DR:** Instar is a new Apache-2.0 harness for measuring LLM workloads on your own traffic — cost, quality, and latency across candidate models, providers, and routers. Repo is two days old but already running: harness core, CLI, provider adapters, rubric framework, and a substantial docs tree are all live on `main`, with a case study from a real self-hosted Qwen run to show the shape of the thing. Looking for a few genuine collaborators — one PR, one design conversation, or "I'll be an early user and file real bug reports" all welcome. Reach out to Brian if you're curious.
 
-**Repo:** [github.com/PurpleBlossomAI/instar](https://github.com/PurpleBlossomAI/instar)
+**Repo:** [github.com/PurpleGardens/instar](https://github.com/PurpleGardens/instar)
 **Status:** pre-v0.1 (harness core + docs landed 2026-07-22; v0.1 tag targeted early August 2026)
 **License:** Apache 2.0
 

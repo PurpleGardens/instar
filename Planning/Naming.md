@@ -21,6 +21,12 @@ The name was chosen from a shortlist of butterfly/transformation-themed candidat
 
 ## Availability sanity-check
 
+> **Note (2026-08-26):** the two `PurpleBlossomAI/...` references below are kept as written
+> because this file records what was decided on 2026-07-21, and rewriting a decision record to
+> match today's layout destroys the thing it exists for. The repo has since moved to
+> **`github.com/PurpleGardens/instar`** (the old URL 301s). Live pointers elsewhere in the repo
+> were updated; these two were not.
+
 Done 2026-07-21:
 - **GitHub org repo:** `github.com/PurpleBlossomAI/instar` — free (was 404 at check time; now claimed by this repo). ✓
 - **AI/dev-tools competitive scan:** no dominant "Instar" in the LLM eval / harness / observability space. Incumbents in the category (DeepEval, Promptfoo, Langfuse, EleutherAI `lm-evaluation-harness`) don't collide. Re-confirmed 2026-07-23 — still no LLM-eval/harness tool named Instar. ✓

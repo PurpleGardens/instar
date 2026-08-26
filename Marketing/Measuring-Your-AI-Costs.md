@@ -118,7 +118,7 @@ Either way, the artifact you get is the same shape: a report you can trust, that
 
 ## More
 
-- **Project:** [github.com/PurpleBlossomAI/instar](https://github.com/PurpleBlossomAI/instar)
+- **Project:** [github.com/PurpleGardens/instar](https://github.com/PurpleGardens/instar)
 - **License:** Apache 2.0
 - **Status:** pre-v0.1 as of 2026-07-22; harness core is live and CI-green on main; v0.1 tag targeted early August 2026
 - **Contact:** brianfromme@gmail.com
