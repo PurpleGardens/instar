@@ -33,6 +33,7 @@ from typing import Any
 from instar.core.cost import PRICING, call_cost_usd
 from instar.core.gateway import percentile
 from instar.core.traffic import TrafficSample
+from instar.core.transcript import Transcript, TranscriptEntry
 from instar.providers.base import Backend, CompletionResult
 from instar.rubrics.base import Judge
 
@@ -202,6 +203,10 @@ class ArmsResult:
     baseline: str
     arms: list[ArmStats]
     warnings: list[str] = field(default_factory=list)
+    # Present only when the run was asked to capture. Deliberately kept out of
+    # to_json(): result.json is a summary people read and diff, and raw model
+    # output would swamp it. Save it beside the report with Transcript.save().
+    transcript: Transcript | None = None
 
     @property
     def trustworthy(self) -> bool:
@@ -254,6 +259,7 @@ class ArmsResult:
 
     def to_json(self) -> dict[str, Any]:
         d = asdict(self)
+        d.pop("transcript", None)
         d["trustworthy"] = self.trustworthy
         d["deltas"] = self.deltas()
         for arm_d, arm in zip(d["arms"], self.arms, strict=True):
@@ -270,6 +276,7 @@ def run_arms(
     pricing: dict[str, tuple[float, float]] | None = None,
     baseline: str | None = None,
     judge: Judge | None = None,
+    capture: bool = False,
 ) -> ArmsResult:
     """Replay ``samples`` through every arm, interleaved, and compare.
 
@@ -287,6 +294,12 @@ def run_arms(
             on the same call. Without one the run reports cost and latency and
             says nothing about quality — which is half an answer, and the half
             that makes a cheap arm look unambiguously good.
+        capture: keep every generation on the result as a
+            :class:`~instar.core.transcript.Transcript`, so the same answers can
+            be re-scored later by a different judge. Generations are the
+            expensive half of a run and judging is the disputable half; capturing
+            lets you redo the second without paying for the first again. Off by
+            default because a transcript holds raw model output.
     """
     if repeats < 1:
         raise ValueError("repeats must be >= 1")
@@ -308,6 +321,20 @@ def run_arms(
             sequence.append(sample)
             for arm in arms:
                 collected[arm.name].append(arm.backend.complete(sample, arm.model))
+
+    transcript: Transcript | None = None
+    if capture:
+        transcript = Transcript(
+            baseline=base_name,
+            arm_models={a.name: a.model for a in arms},
+            entries=[
+                TranscriptEntry(
+                    sample=sample,
+                    completions={a.name: collected[a.name][i] for a in arms},
+                )
+                for i, sample in enumerate(sequence)
+            ],
+        )
 
     stats = [summarize_arm(a, collected[a.name], pricing=pricing) for a in arms]
 
@@ -367,4 +394,81 @@ def run_arms(
             f"({', '.join(sorted(sources))}) - the cost comparison is not like-for-like"
         )
 
-    return ArmsResult(n=total_calls, baseline=base_name, arms=stats, warnings=warnings)
+    return ArmsResult(
+        n=total_calls,
+        baseline=base_name,
+        arms=stats,
+        warnings=warnings,
+        transcript=transcript,
+    )
+
+
+class _ReplayBackend(Backend):
+    """Placeholder backend for arms rebuilt from a transcript.
+
+    :func:`summarize_arm` needs an :class:`Arm`, and an ``Arm`` needs a backend —
+    but re-judging never generates anything, so there is nothing for it to call.
+    Raising rather than quietly returning a failure means a future edit that
+    tries to *complete* through a replayed arm fails loudly instead of silently
+    scoring an empty string.
+    """
+
+    name = "replay"
+
+    def complete(self, sample: TrafficSample, model: str) -> CompletionResult:
+        raise RuntimeError("a replayed arm cannot generate; it only carries saved completions")
+
+
+_REPLAY_BACKEND = _ReplayBackend()
+
+
+def rejudge(
+    transcript: Transcript,
+    judge: Judge,
+    *,
+    pricing: dict[str, tuple[float, float]] | None = None,
+) -> ArmsResult:
+    """Re-score saved generations with a different judge. No new generations.
+
+    This is the control on the judge. :func:`run_arms` reports one judge's
+    opinion; run this over the same transcript with a judge from another model
+    family and any movement in the quality numbers is the judge's doing, because
+    nothing else changed. Two judges that agree make a quality claim defensible.
+    Two that disagree have told you the claim was never about the models.
+
+    Cost and latency come back identical to the original run — they are read off
+    the saved completions, not re-measured — so the report is directly
+    comparable to the one the live run produced.
+    """
+    if not transcript.entries:
+        raise ValueError("transcript has no entries to judge")
+    names = transcript.arm_names
+    base_name = transcript.baseline
+    sequence = [e.sample for e in transcript.entries]
+    collected: dict[str, list[CompletionResult]] = {
+        name: [e.completions[name] for e in transcript.entries] for name in names
+    }
+    arms = [
+        Arm(name=name, backend=_REPLAY_BACKEND, model=transcript.arm_models[name]) for name in names
+    ]
+    stats = [summarize_arm(a, collected[a.name], pricing=pricing) for a in arms]
+
+    base_results = collected[base_name]
+    for s in stats:
+        if s.name == base_name:
+            continue
+        mean, scores = judge_arm(judge, sequence, base_results, collected[s.name])
+        s.quality_mean = mean
+        s.quality_n = len(scores)
+        s.quality_scores = scores
+
+    warnings = [
+        "re-judged from a saved transcript: cost and latency are replayed from "
+        "the original run, only the quality scores are new"
+    ]
+    return ArmsResult(
+        n=len(transcript.entries),
+        baseline=base_name,
+        arms=stats,
+        warnings=warnings,
+    )

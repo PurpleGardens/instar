@@ -27,12 +27,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from instar.core.arms import Arm, run_arms
+from instar.core.arms import Arm, rejudge, run_arms
 from instar.core.catalog import FeatureCatalog
 from instar.core.cost import load_pricing
 from instar.core.gateway import run_gateway
 from instar.core.route import run_route, run_sweep
 from instar.core.traffic import TrafficSample, load_traffic
+from instar.core.transcript import Transcript
 from instar.policies import POLICY_NAMES, ClassifierPolicy, build_policy
 from instar.providers.anthropic import AnthropicBackend
 from instar.providers.base import Backend
@@ -398,7 +399,11 @@ def _cmd_arms(args: argparse.Namespace) -> int:
         pricing=pricing,
         baseline=args.baseline,
         judge=judge,
+        capture=bool(args.save_transcript),
     )
+    if args.save_transcript and result.transcript is not None:
+        saved = result.transcript.save(args.save_transcript)
+        print(f"transcript -> {saved}")
     label = args.label or f"arms-{'mock' if mock else 'live'}"
     d = report_arms(result, label, mock=mock, runs_dir=args.runs_dir)
     print(f"arms -> {d}")
@@ -417,6 +422,38 @@ def _cmd_arms(args: argparse.Namespace) -> int:
     for w in result.warnings:
         print(f"  warning: {w}", file=sys.stderr)
     return 1 if any(s.n_err for s in result.arms) else 0
+
+
+def _cmd_rejudge(args: argparse.Namespace) -> int:
+    transcript = Transcript.load(args.transcript)
+    if args.mock_judge:
+        judge: Judge = MockJudge()
+    else:
+        judge_backend: Backend = (
+            OpenAICompatBackend(args.judge_url, name="judge", api_key_env=args.judge_key_env)
+            if args.judge_url
+            else AnthropicBackend(name="judge")
+        )
+        judge = (
+            BlindPairwiseJudge(judge_backend, args.judge_model)
+            if args.blind_judge
+            else LLMJudge(judge_backend, args.judge_model)
+        )
+    pricing = load_pricing(args.pricing) if args.pricing else None
+    result = rejudge(transcript, judge, pricing=pricing)
+    label = args.label or f"rejudge-{args.judge_model.replace('/', '-')}"
+    d = report_arms(result, label, mock=args.mock_judge, runs_dir=args.runs_dir)
+    print(f"rejudge -> {d}")
+    base = result.by_name(result.baseline)
+    named = "mock" if args.mock_judge else args.judge_model
+    print(f"  judge: {named}{' (blind)' if args.blind_judge and not args.mock_judge else ''}")
+    print(f"  {base.name:<16} baseline")
+    for s in result.arms:
+        if s.name == result.baseline:
+            continue
+        q = "unscored" if s.quality_mean is None else f"{s.quality_mean:.3f} (n={s.quality_n})"
+        print(f"  {s.name:<16} quality {q}")
+    return 0
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -512,6 +549,40 @@ def build_parser() -> argparse.ArgumentParser:
     arms.add_argument("--judge-url", help="OpenAI-compatible endpoint for the judge")
     arms.add_argument("--judge-key-env", help="env var holding the judge's API key")
     arms.add_argument("--repeats", type=int, default=1, help="replay the workload N times per arm")
+    arms.add_argument(
+        "--save-transcript",
+        metavar="PATH",
+        help="write every generation to PATH so the run can be re-judged later "
+        "without paying to regenerate it (see the rejudge command). Holds raw "
+        "model output: as private as the workload it came from.",
+    )
+
+    rej = sub.add_parser(
+        "rejudge",
+        help="re-score a saved arms transcript with a different judge (no new generations)",
+        description="Score saved generations again with another judge. Cost and "
+        "latency are replayed unchanged from the original run, so any movement "
+        "in quality is the judge's doing and nothing else's — which is the only "
+        "way to tell a claim about your models from a quirk of your judge.",
+    )
+    rej.add_argument("transcript", help="transcript written by `instar arms --save-transcript`")
+    rej.add_argument("--label", help="run label; output goes to <runs-dir>/<label>/")
+    rej.add_argument("--runs-dir", default=DEFAULT_RUNS_DIR, help="where to write run output")
+    rej.add_argument("--judge-model", default=DEFAULT_STRONG, help="model that judges")
+    rej.add_argument("--judge-url", help="OpenAI-compatible endpoint for the judge")
+    rej.add_argument("--judge-key-env", help="env var holding the judge's API key")
+    rej.add_argument(
+        "--blind-judge",
+        action="store_true",
+        help="hide which answer came from which arm and shuffle their order",
+    )
+    rej.add_argument("--pricing", help="pricing table JSON for arms that report no cost")
+    rej.add_argument(
+        "--mock-judge",
+        action="store_true",
+        help="score with the deterministic mock judge; measures nothing, exercises the path",
+    )
+    rej.set_defaults(func=_cmd_rejudge)
 
     gateway = sub.add_parser(
         "gateway", help="compare two gateways or endpoints on per-call latency"
