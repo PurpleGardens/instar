@@ -36,10 +36,102 @@ class JudgeResult:
     rationale: str
 
 
+# Vendor prefixes and name fragments -> the family whose house style a judge
+# may share. Family is vendor-level on purpose: the bias a cross-family check
+# guards against is a judge preferring text shaped like its own maker's output.
+_FAMILY_BY_VENDOR = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "google": "google",
+    "meta-llama": "meta",
+    "meta": "meta",
+    "mistralai": "mistral",
+    "mistral": "mistral",
+    "qwen": "alibaba",
+    "alibaba": "alibaba",
+    "deepseek": "deepseek",
+    "x-ai": "xai",
+}
+_FAMILY_BY_FRAGMENT = (
+    ("claude", "anthropic"),
+    ("gpt", "openai"),
+    ("o1", "openai"),
+    ("o3", "openai"),
+    ("o4", "openai"),
+    ("gemini", "google"),
+    ("gemma", "google"),
+    ("llama", "meta"),
+    ("mistral", "mistral"),
+    ("mixtral", "mistral"),
+    ("qwen", "alibaba"),
+    ("deepseek", "deepseek"),
+    ("grok", "xai"),
+)
+UNKNOWN_FAMILY = "unknown"
+
+
+def model_family(model: str) -> str:
+    """Best-effort vendor family for a model id, or ``"unknown"``.
+
+    Router-style ids (``openai/gpt-4o``) are read by their vendor prefix; bare
+    ids by a known name fragment. A guess is recorded rather than required
+    because the family is what makes two judges' numbers comparable or not —
+    but a wrong guess is worse than ``unknown``, so anything unrecognized says
+    so. Pass the family explicitly to a judge when you know better.
+    """
+    m = model.strip().lower()
+    if "/" in m:
+        vendor = m.split("/", 1)[0]
+        if vendor in _FAMILY_BY_VENDOR:
+            return _FAMILY_BY_VENDOR[vendor]
+        m = m.split("/", 1)[1]
+    for fragment, family in _FAMILY_BY_FRAGMENT:
+        if m.startswith(fragment) or f"-{fragment}" in m:
+            return family
+    return UNKNOWN_FAMILY
+
+
+@dataclass(frozen=True)
+class JudgeKey:
+    """Which instrument produced a score.
+
+    A quality number is a property of the judge as much as of the models it
+    compared: one set of answers can score very differently under judges from
+    different families. So every stored score carries this key, and two scores
+    with different keys are not the same measurement.
+
+    ``model`` and ``family`` are ``None`` for judges that consult no model
+    (objective label matching, the mock).
+    """
+
+    kind: str
+    model: str | None = None
+    family: str | None = None
+    blind: bool = False
+
+    def to_json(self) -> dict[str, str | bool | None]:
+        return {"kind": self.kind, "model": self.model, "family": self.family, "blind": self.blind}
+
+    @classmethod
+    def from_json(cls, d: dict[str, object]) -> JudgeKey:
+        model = d.get("model")
+        family = d.get("family")
+        return cls(
+            kind=str(d["kind"]),
+            model=None if model is None else str(model),
+            family=None if family is None else str(family),
+            blind=bool(d.get("blind", False)),
+        )
+
+
 class Judge(ABC):
     """Scores a weak completion against the strong baseline."""
 
     name: str = "abstract"
+
+    def key(self) -> JudgeKey:
+        """Identify this judge. Model-based judges override to add model and family."""
+        return JudgeKey(kind=self.name)
 
     @abstractmethod
     def score(

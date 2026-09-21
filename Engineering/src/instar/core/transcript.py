@@ -40,14 +40,20 @@ class TranscriptEntry:
     ``completions`` is keyed by arm name. Every arm answers every prompt, so a
     missing key means that arm was not part of the run rather than that it
     declined — a failed call is present with ``ok=False``.
+
+    ``repeat`` is which pass over the workload produced this entry (0-based).
+    The same sample appears once per repeat, and telling those apart is what
+    lets run-to-run variance be measured rather than averaged away.
     """
 
     sample: TrafficSample
     completions: dict[str, CompletionResult]
+    repeat: int = 0
 
     def to_json(self) -> dict[str, Any]:
         return {
             "sample": self.sample.to_json(),
+            "repeat": self.repeat,
             "completions": {
                 name: {
                     "text": c.text,
@@ -80,6 +86,7 @@ class TranscriptEntry:
                 )
                 for name, c in d["completions"].items()
             },
+            repeat=int(d.get("repeat", 0)),
         )
 
 
@@ -94,6 +101,12 @@ class Transcript:
     baseline: str
     arm_models: dict[str, str]
     entries: list[TranscriptEntry] = field(default_factory=list)
+    # Backend class per arm, e.g. ``OpenAICompatBackend``. Optional because
+    # transcripts written before it existed do not carry it.
+    arm_backends: dict[str, str] = field(default_factory=dict)
+    # The same-model control arm, if the run had one. Kept so a re-judge knows
+    # which arm's score measures the judge rather than the models.
+    control: str | None = None
 
     @property
     def arm_names(self) -> list[str]:
@@ -104,6 +117,8 @@ class Transcript:
             "format_version": FORMAT_VERSION,
             "baseline": self.baseline,
             "arm_models": self.arm_models,
+            "arm_backends": self.arm_backends,
+            "control": self.control,
             "entries": [e.to_json() for e in self.entries],
         }
 
@@ -121,6 +136,8 @@ class Transcript:
             baseline=d["baseline"],
             arm_models=dict(d["arm_models"]),
             entries=[TranscriptEntry.from_json(e) for e in d["entries"]],
+            arm_backends=dict(d.get("arm_backends", {})),
+            control=d.get("control"),
         )
 
     def save(self, path: str | Path) -> Path:

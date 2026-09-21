@@ -19,6 +19,7 @@ Every command below was run against this repository. Output is real, trimmed onl
 7. [Going live](#7-going-live)
 8. [Compare two gateways](#8-compare-two-gateways)
 8b. [Compare three or more arms](#8b-compare-three-or-more-arms-instar-arms)
+8c. [Keep every run in a corpus](#8c-keep-every-run-in-a-corpus)
 9. [Supply your own pricing table](#9-supply-your-own-pricing-table)
 10. [Read a report](#10-read-a-report)
 11. [Interpreting results honestly](#11-interpreting-results-honestly)
@@ -537,6 +538,59 @@ firing, or an auto-router substituting. When an arm's responses name a different
 model, the run records the served ids and warns. For a router comparison this is
 often the most important thing the run has to tell you, so it is surfaced rather
 than averaged away.
+
+---
+
+## 8c. Keep every run in a corpus
+
+One run answers one question. Questions about the *measuring* — is the judge
+drifting, is a gold label wrong, did the cheap model improve or did the judge
+get kinder — need many runs read together. `--corpus` appends each run to a
+directory that is never rewritten:
+
+```bash
+instar arms --live --judge --control \
+  --arm name=direct,url=direct,model=claude-sonnet-4-6 \
+  --arm name=cheap,url=https://openrouter.ai/api/v1,model=openai/gpt-4o-mini,key_env=OPENROUTER_API_KEY \
+  --traffic my-workload.jsonl \
+  --corpus ~/instar-corpus --tenant my-team --rubric-version r1
+```
+
+```
+~/instar-corpus/my-team/2026/09/20260921T120000Z-1a2b3c4d/
+  run.json          the run: arms, baseline, control, judge, warnings, build, context
+  calls.jsonl       one record per (prompt, repeat, arm), each with its score and judge
+  transcript.json   every generation
+```
+
+**`--control`** adds a same-model control arm: the baseline's endpoint and model
+under the name `control`. Its true quality is ~1.0, so whatever the judge takes
+off it is the judge's own error. A judged run without one warns, because the
+other arms' scores cannot be read without it.
+
+**Every score carries its judge** — kind, model, vendor family, and whether it
+was blind. Scores from different judges are different measurements. The family
+is guessed from the model id; pass `--judge-family` when the guess is wrong.
+
+**Re-judging adds, never replaces.** Point `rejudge` at a transcript inside the
+corpus and the new scores are written as a new run that references the original
+generations:
+
+```bash
+instar rejudge ~/instar-corpus/my-team/2026/09/<run>/transcript.json \
+  --judge-model gpt-4o --judge-url https://api.openai.com/v1 --judge-key-env OPENAI_API_KEY \
+  --corpus ~/instar-corpus
+```
+
+**Context flags:** `--tenant` (required) · `--upstream-consent` (the tenant
+allows pooling into a shared corpus; off by default, and a sample can opt out
+with `meta.upstream_consent: false` but never opt in on its tenant's behalf) ·
+`--workload` · `--origin coverage|failure-mined|production-captured` ·
+`--rubric-version` · `--gold-version`. A sample's `meta.origin` and
+`meta.reaction` (`accepted|edited|regenerated|abandoned`) are recorded per row.
+
+A corpus holds raw model output for your prompts. It is as private as the
+workload it came from — keep it out of public repositories.
 
 ---
 
