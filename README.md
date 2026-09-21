@@ -62,6 +62,7 @@ Python 3.11+.
 
 ## Where to go next
 
+- [`Engineering/Docs/GUIDE-Measure-Your-Own-Prompts.md`](./Engineering/Docs/GUIDE-Measure-Your-Own-Prompts.md) — **no application needed:** bring 10–30 of your own prompts and find out whether a cheaper model is good enough for your work. About an hour and a few dollars.
 - [`Engineering/Docs/RUNBOOK.md`](./Engineering/Docs/RUNBOOK.md) — how to actually run it, including a walkthrough for measuring **your own** workload.
 - [`Engineering/Docs/PROVIDERS.md`](./Engineering/Docs/PROVIDERS.md) — connecting Instar to a hosted LLM or a self-hosted small model.
 - [`Engineering/Docs/GUIDE-Creating-Rubrics.md`](./Engineering/Docs/GUIDE-Creating-Rubrics.md) — a step-by-step guide to writing a rubric that decides your AI-spend question.

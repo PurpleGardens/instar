@@ -198,6 +198,8 @@ threshold,saved_pct,mean_quality_all,mean_quality_routed_weak,weak_count
 
 This is what Instar is for. The shipped fixtures exist to prove the pipeline works; they say nothing about your traffic. Four steps.
 
+> **No application, just your own prompts?** Use [`GUIDE-Measure-Your-Own-Prompts.md`](GUIDE-Measure-Your-Own-Prompts.md) instead. It turns a folder of everyday prompts into a workload and gives you one recipe to run.
+
 ### 5.1 Capture
 
 Instar does not capture traffic for you — it replays it. Get a list of the LLM calls one real workflow makes: a support triage pass, a campaign build, a nightly enrichment job. Pull them from your application logs, your gateway's request log, or your observability store.
