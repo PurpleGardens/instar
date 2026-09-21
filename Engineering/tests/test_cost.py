@@ -127,3 +127,10 @@ def test_breakeven_returns_none_when_self_hosting_never_wins() -> None:
         )
         is None
     )
+
+
+def test_sonnet_4_5_is_priced_like_sonnet_4_6() -> None:
+    # A live arms run on claude-sonnet-4-5 reported cost "unavailable" for want
+    # of this row; OpenRouter's provider-reported cost for the same model matched
+    # this rate to within token-count noise.
+    assert PRICING["claude-sonnet-4-5"] == PRICING["claude-sonnet-4-6"] == (3.0, 15.0)
