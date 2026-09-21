@@ -10,6 +10,11 @@ Two subcommands:
 - ``instar arms`` — replay a workload through N arms, each with its own
   endpoint and model; compare latency and cost. The A/B/C shape: direct,
   through a router at the same model, through a router at a cheaper one.
+- ``instar rejudge`` — score a saved arms transcript again with another judge.
+
+``arms`` and ``rejudge`` can also append each run to a measurement corpus
+(``--corpus``), so runs can be read together later. See
+:mod:`instar.core.corpus`.
 
 Both default to **mock mode**, which is hermetic: no API keys, no network, no
 spend. Pass ``--live`` to use real endpoints.
@@ -29,6 +34,13 @@ from typing import Any
 
 from instar.core.arms import Arm, rejudge, run_arms
 from instar.core.catalog import FeatureCatalog
+from instar.core.corpus import (
+    ORIGINS,
+    RecordContext,
+    find_corpus_root,
+    load_run_context,
+    write_run,
+)
 from instar.core.cost import load_pricing
 from instar.core.gateway import run_gateway
 from instar.core.route import run_route, run_sweep
@@ -361,6 +373,7 @@ def _cmd_arms(args: argparse.Namespace) -> int:
         extra_body = parsed
 
     arms: list[Arm]
+    specs: list[dict[str, str]] = []
     if mock:
         # Three arms with different simulated latency so the report shape is
         # visible without spending anything.
@@ -372,7 +385,26 @@ def _cmd_arms(args: argparse.Namespace) -> int:
     else:
         if len(args.arm) < 2:
             raise SystemExit("instar: --live arms runs need at least two --arm specs")
-        arms = [_build_arm(_parse_arm_spec(a), extra_body=extra_body) for a in args.arm]
+        specs = [_parse_arm_spec(a) for a in args.arm]
+        arms = [_build_arm(spec, extra_body=extra_body) for spec in specs]
+
+    if args.control:
+        if any(a.name == CONTROL_ARM_NAME for a in arms):
+            raise SystemExit(
+                f"instar: --control adds an arm named {CONTROL_ARM_NAME!r}; rename yours"
+            )
+        base_name = args.baseline or arms[0].name
+        base_arm = next((a for a in arms if a.name == base_name), None)
+        if base_arm is None:
+            raise SystemExit(f"instar: baseline {base_name!r} is not one of the arms")
+        base_spec = next((sp for sp in specs if sp["name"] == base_name), None)
+        arms.append(_control_arm(base_arm, mock=mock, spec=base_spec, extra_body=extra_body))
+
+    ctx = (
+        _record_context(args, mock=mock, traffic=str(_resolve_traffic(args.traffic)))
+        if args.corpus
+        else None
+    )
 
     pricing = load_pricing(args.pricing) if args.pricing else None
 
@@ -387,9 +419,9 @@ def _cmd_arms(args: argparse.Namespace) -> int:
                 else AnthropicBackend(name="judge")
             )
             judge = (
-                BlindPairwiseJudge(judge_backend, args.judge_model)
+                BlindPairwiseJudge(judge_backend, args.judge_model, family=args.judge_family)
                 if args.blind_judge
-                else LLMJudge(judge_backend, args.judge_model)
+                else LLMJudge(judge_backend, args.judge_model, family=args.judge_family)
             )
 
     result = run_arms(
@@ -399,11 +431,14 @@ def _cmd_arms(args: argparse.Namespace) -> int:
         pricing=pricing,
         baseline=args.baseline,
         judge=judge,
-        capture=bool(args.save_transcript),
+        capture=bool(args.save_transcript) or ctx is not None,
     )
     if args.save_transcript and result.transcript is not None:
         saved = result.transcript.save(args.save_transcript)
         print(f"transcript -> {saved}")
+    if ctx is not None and result.transcript is not None:
+        run_dir = write_run(args.corpus, result, result.transcript, ctx)
+        print(f"corpus -> {run_dir}")
     label = args.label or f"arms-{'mock' if mock else 'live'}"
     d = report_arms(result, label, mock=mock, runs_dir=args.runs_dir)
     print(f"arms -> {d}")
@@ -426,6 +461,17 @@ def _cmd_arms(args: argparse.Namespace) -> int:
 
 def _cmd_rejudge(args: argparse.Namespace) -> int:
     transcript = Transcript.load(args.transcript)
+    source_dir = Path(args.transcript).resolve().parent
+    ctx: RecordContext | None = None
+    if args.corpus:
+        root = find_corpus_root(source_dir)
+        if root is None or root != Path(args.corpus).resolve():
+            raise SystemExit(
+                "instar: rejudge --corpus needs a transcript.json from a run inside "
+                f"{args.corpus} (written by `instar arms --corpus`), so the new "
+                "scores can point at the generations they judged"
+            )
+        ctx = load_run_context(source_dir)
     if args.mock_judge:
         judge: Judge = MockJudge()
     else:
@@ -435,12 +481,15 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
             else AnthropicBackend(name="judge")
         )
         judge = (
-            BlindPairwiseJudge(judge_backend, args.judge_model)
+            BlindPairwiseJudge(judge_backend, args.judge_model, family=args.judge_family)
             if args.blind_judge
-            else LLMJudge(judge_backend, args.judge_model)
+            else LLMJudge(judge_backend, args.judge_model, family=args.judge_family)
         )
     pricing = load_pricing(args.pricing) if args.pricing else None
     result = rejudge(transcript, judge, pricing=pricing)
+    if ctx is not None:
+        run_dir = write_run(args.corpus, result, transcript, ctx, source_run_dir=source_dir)
+        print(f"corpus -> {run_dir}")
     label = args.label or f"rejudge-{args.judge_model.replace('/', '-')}"
     d = report_arms(result, label, mock=args.mock_judge, runs_dir=args.runs_dir)
     print(f"rejudge -> {d}")
@@ -456,11 +505,71 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
     return 0
 
 
+CONTROL_ARM_NAME = "control"
+
+
+def _control_arm(
+    baseline: Arm, *, mock: bool, spec: dict[str, str] | None, extra_body: dict[str, Any] | None
+) -> Arm:
+    """A same-model control: the baseline's endpoint and model under another name.
+
+    Built as a fresh backend rather than sharing the baseline's object, so the
+    two arms are two independent calls that happen to ask the same model.
+    """
+    if mock or spec is None:
+        backend: Backend = MockBackend(CONTROL_ARM_NAME, latency_s=0.010)
+        return Arm(CONTROL_ARM_NAME, backend, baseline.model, is_control=True)
+    built = _build_arm({**spec, "name": CONTROL_ARM_NAME}, extra_body=extra_body)
+    return Arm(CONTROL_ARM_NAME, built.backend, built.model, is_control=True)
+
+
+def _record_context(args: argparse.Namespace, *, mock: bool, traffic: str | None) -> RecordContext:
+    if not args.tenant:
+        raise SystemExit("instar: --corpus needs --tenant (whose workload this is)")
+    workload = args.workload or (Path(traffic).stem if traffic else None)
+    try:
+        return RecordContext(
+            tenant_id=args.tenant,
+            upstream_consent=bool(args.upstream_consent),
+            workload_id=workload,
+            origin=args.origin,
+            rubric_version=args.rubric_version,
+            gold_version=args.gold_version,
+            mock=mock,
+        )
+    except ValueError as e:
+        raise SystemExit(f"instar: {e}") from e
+
+
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--traffic", help="workload fixture (.jsonl); defaults to a sample if present")
     p.add_argument("--live", action="store_true", help="use real endpoints instead of mocks")
     p.add_argument("--label", help="run label; output goes to <runs-dir>/<label>/")
     p.add_argument("--runs-dir", default=DEFAULT_RUNS_DIR, help="where to write run output")
+
+
+def _add_corpus_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--corpus",
+        metavar="DIR",
+        help="append this run to a measurement corpus at DIR (implies capturing "
+        "generations). Holds raw model output: as private as the workload",
+    )
+    p.add_argument("--tenant", help="whose workload this is; required with --corpus")
+    p.add_argument(
+        "--upstream-consent",
+        action="store_true",
+        help="the tenant allows these records to be pooled into a shared corpus (default: no)",
+    )
+    p.add_argument("--workload", help="workload id (default: the traffic file's name)")
+    p.add_argument(
+        "--origin",
+        default="coverage",
+        choices=sorted(ORIGINS),
+        help="where the tasks came from; a sample's meta.origin overrides it",
+    )
+    p.add_argument("--rubric-version", help="version of the rubric these scores are read against")
+    p.add_argument("--gold-version", help="version of the workload's gold labels, if any")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -550,6 +659,17 @@ def build_parser() -> argparse.ArgumentParser:
     arms.add_argument("--judge-key-env", help="env var holding the judge's API key")
     arms.add_argument("--repeats", type=int, default=1, help="replay the workload N times per arm")
     arms.add_argument(
+        "--control",
+        action="store_true",
+        help="add a same-model control arm (the baseline's endpoint and model). Its "
+        "score is the judge's own error, which is what makes the other scores readable",
+    )
+    arms.add_argument(
+        "--judge-family",
+        help="the judge model's vendor family, when the automatic guess is wrong or unknown",
+    )
+    _add_corpus_args(arms)
+    arms.add_argument(
         "--save-transcript",
         metavar="PATH",
         help="write every generation to PATH so the run can be re-judged later "
@@ -577,6 +697,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="hide which answer came from which arm and shuffle their order",
     )
     rej.add_argument("--pricing", help="pricing table JSON for arms that report no cost")
+    rej.add_argument(
+        "--judge-family",
+        help="the judge model's vendor family, when the automatic guess is wrong or unknown",
+    )
+    rej.add_argument(
+        "--corpus",
+        metavar="DIR",
+        help="append the new scores to the corpus the transcript came from; the "
+        "tenant and other context are read from the original run",
+    )
     rej.add_argument(
         "--mock-judge",
         action="store_true",

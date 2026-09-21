@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from instar.core.catalog import BACKGROUND, FeatureCatalog
 from instar.core.traffic import TrafficSample
 from instar.providers.base import Backend, CompletionResult
-from instar.rubrics.base import Judge, JudgeResult
+from instar.rubrics.base import Judge, JudgeKey, JudgeResult, model_family
 
 
 class MockJudge(Judge):
@@ -136,9 +136,15 @@ class LLMJudge(Judge):
         "Reply with only that one word."
     )
 
-    def __init__(self, judge_backend: Backend, judge_model: str) -> None:
+    def __init__(
+        self, judge_backend: Backend, judge_model: str, *, family: str | None = None
+    ) -> None:
         self.judge_backend = judge_backend
         self.judge_model = judge_model
+        self.family = family or model_family(judge_model)
+
+    def key(self) -> JudgeKey:
+        return JudgeKey(kind=self.name, model=self.judge_model, family=self.family)
 
     @staticmethod
     def _task_text(sample: TrafficSample) -> str:
@@ -215,9 +221,15 @@ class BlindPairwiseJudge(Judge):
         "Reply with only that one word."
     )
 
-    def __init__(self, judge_backend: Backend, judge_model: str) -> None:
+    def __init__(
+        self, judge_backend: Backend, judge_model: str, *, family: str | None = None
+    ) -> None:
         self.judge_backend = judge_backend
         self.judge_model = judge_model
+        self.family = family or model_family(judge_model)
+
+    def key(self) -> JudgeKey:
+        return JudgeKey(kind=self.name, model=self.judge_model, family=self.family, blind=True)
 
     @staticmethod
     def _first_is_baseline(sample_id: str) -> bool:
@@ -277,6 +289,12 @@ class AutoJudge(Judge):
     def __init__(self, label_judge: Judge | None, llm_judge: Judge) -> None:
         self.label_judge = label_judge
         self.llm_judge = llm_judge
+
+    def key(self) -> JudgeKey:
+        # Samples with gold go to the objective judge, the rest to the model;
+        # the model half is the one whose identity changes the numbers.
+        inner = self.llm_judge.key()
+        return JudgeKey(kind=self.name, model=inner.model, family=inner.family, blind=inner.blind)
 
     def score(
         self, sample: TrafficSample, strong: CompletionResult, weak: CompletionResult

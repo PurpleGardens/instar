@@ -35,7 +35,7 @@ from instar.core.gateway import percentile
 from instar.core.traffic import TrafficSample
 from instar.core.transcript import Transcript, TranscriptEntry
 from instar.providers.base import Backend, CompletionResult
-from instar.rubrics.base import Judge
+from instar.rubrics.base import Judge, JudgeKey, JudgeResult
 
 # How a cost figure was arrived at. Worth recording per arm because a run that
 # mixes measured and estimated costs is not comparing like with like, and a
@@ -47,11 +47,18 @@ COST_UNAVAILABLE = "unavailable"
 
 @dataclass(frozen=True)
 class Arm:
-    """One way of serving the workload: a backend, a model, a label."""
+    """One way of serving the workload: a backend, a model, a label.
+
+    ``is_control`` marks a **same-model control**: an arm serving exactly the
+    baseline's model. Its true quality relative to the baseline is ~1.0, so any
+    score a judge gives it below that is the judge's error, not the model's —
+    which is what makes the other arms' quality numbers readable.
+    """
 
     name: str
     backend: Backend
     model: str
+    is_control: bool = False
 
 
 @dataclass
@@ -80,6 +87,7 @@ class ArmStats:
     # Models that actually served, when the arm's backend substituted. Empty
     # for a well-behaved single-model arm; non-empty is a finding, not noise.
     served_models: list[str] = field(default_factory=list)
+    is_control: bool = False
 
     @property
     def cost_per_1k_calls_usd(self) -> float:
@@ -167,7 +175,34 @@ def summarize_arm(
         input_tokens=sum(r.input_tokens for r in ok),
         output_tokens=sum(r.output_tokens for r in ok),
         served_models=served,
+        is_control=arm.is_control,
     )
+
+
+def judge_calls(
+    judge: Judge,
+    samples: list[TrafficSample],
+    baseline_results: list[CompletionResult],
+    arm_results: list[CompletionResult],
+) -> list[JudgeResult | None]:
+    """Score one arm's outputs against the baseline's, call for call.
+
+    The three lists are positionally aligned by construction — :func:`run_arms`
+    drives every arm through the same (repeat, sample) sequence — so index ``i``
+    is the same prompt answered by each arm. The result is aligned the same way,
+    with ``None`` where the pair was skipped.
+
+    A pair where either side failed is skipped rather than scored 0.0: a network
+    error is not a quality signal, and folding it in would let an unreliable arm
+    look like a *bad* arm instead of a broken one. Those two need different fixes.
+    """
+    out: list[JudgeResult | None] = []
+    for sample, base, arm in zip(samples, baseline_results, arm_results, strict=True):
+        if not base.ok or not arm.ok:
+            out.append(None)
+            continue
+        out.append(judge.score(sample, base, arm))
+    return out
 
 
 def judge_arm(
@@ -176,23 +211,49 @@ def judge_arm(
     baseline_results: list[CompletionResult],
     arm_results: list[CompletionResult],
 ) -> tuple[float | None, list[float]]:
-    """Score one arm's outputs against the baseline's, call for call.
-
-    The three lists are positionally aligned by construction — :func:`run_arms`
-    drives every arm through the same (repeat, sample) sequence — so index ``i``
-    is the same prompt answered by each arm.
-
-    A pair where either side failed is skipped rather than scored 0.0: a network
-    error is not a quality signal, and folding it in would let an unreliable arm
-    look like a *bad* arm instead of a broken one. Those two need different fixes.
-    """
-    scores: list[float] = []
-    for sample, base, arm in zip(samples, baseline_results, arm_results, strict=True):
-        if not base.ok or not arm.ok:
-            continue
-        scores.append(judge.score(sample, base, arm).score)
+    """Mean and list of scores for one arm; see :func:`judge_calls`."""
+    scores = [
+        r.score for r in judge_calls(judge, samples, baseline_results, arm_results) if r is not None
+    ]
     mean = (sum(scores) / len(scores)) if scores else None
     return mean, scores
+
+
+def judge_key_of(judge: Judge) -> JudgeKey:
+    """The judge's identity, tolerating judges that predate :meth:`Judge.key`.
+
+    A judge only has to provide ``score``; one written without subclassing
+    :class:`Judge` still gets recorded, by its ``name``, rather than failing the
+    run after every generation has been paid for.
+    """
+    key = getattr(judge, "key", None)
+    if callable(key):
+        result = key()
+        if isinstance(result, JudgeKey):
+            return result
+    return JudgeKey(kind=str(getattr(judge, "name", type(judge).__name__)))
+
+
+def _apply_judge(
+    judge: Judge,
+    stats: list[ArmStats],
+    base_name: str,
+    sequence: list[TrafficSample],
+    collected: dict[str, list[CompletionResult]],
+) -> dict[str, list[JudgeResult | None]]:
+    """Judge every non-baseline arm; fill its quality fields; return per-call results."""
+    judgments: dict[str, list[JudgeResult | None]] = {}
+    base_results = collected[base_name]
+    for s in stats:
+        if s.name == base_name:
+            continue
+        calls = judge_calls(judge, sequence, base_results, collected[s.name])
+        scores = [r.score for r in calls if r is not None]
+        s.quality_mean = (sum(scores) / len(scores)) if scores else None
+        s.quality_n = len(scores)
+        s.quality_scores = scores
+        judgments[s.name] = calls
+    return judgments
 
 
 @dataclass
@@ -207,6 +268,17 @@ class ArmsResult:
     # to_json(): result.json is a summary people read and diff, and raw model
     # output would swamp it. Save it beside the report with Transcript.save().
     transcript: Transcript | None = None
+    # Which judge scored this run, if any. Part of the result's identity: the
+    # same answers under a different judge are a different measurement.
+    judge: JudgeKey | None = None
+    # Per-call judge results per judged arm, aligned with the run's (repeat,
+    # sample) sequence; None where a pair was skipped. Kept out of to_json()
+    # for the same reason as the transcript — it is per-call detail.
+    judgments: dict[str, list[JudgeResult | None]] = field(default_factory=dict)
+
+    @property
+    def control(self) -> str | None:
+        return next((a.name for a in self.arms if a.is_control), None)
 
     @property
     def trustworthy(self) -> bool:
@@ -260,6 +332,9 @@ class ArmsResult:
     def to_json(self) -> dict[str, Any]:
         d = asdict(self)
         d.pop("transcript", None)
+        d.pop("judgments", None)
+        d["judge"] = self.judge.to_json() if self.judge is not None else None
+        d["control"] = self.control
         d["trustworthy"] = self.trustworthy
         d["deltas"] = self.deltas()
         for arm_d, arm in zip(d["arms"], self.arms, strict=True):
@@ -311,14 +386,28 @@ def run_arms(
     base_name = baseline or names[0]
     if base_name not in names:
         raise ValueError(f"baseline {base_name!r} is not one of {names}")
+    controls = [a for a in arms if a.is_control]
+    if len(controls) > 1:
+        raise ValueError(f"at most one control arm, got {[a.name for a in controls]}")
+    base_arm = next(a for a in arms if a.name == base_name)
+    if controls:
+        if controls[0].name == base_name:
+            raise ValueError("the baseline cannot also be the control arm")
+        if controls[0].model != base_arm.model:
+            raise ValueError(
+                f"control arm {controls[0].name!r} must serve the baseline's model "
+                f"{base_arm.model!r}, not {controls[0].model!r} - otherwise it is not a control"
+            )
 
     collected: dict[str, list[CompletionResult]] = {a.name: [] for a in arms}
     # The exact (repeat, sample) sequence every arm walked, kept so a judge can
     # line up call i across arms without re-deriving the ordering.
     sequence: list[TrafficSample] = []
-    for _ in range(repeats):
+    repeat_of: list[int] = []
+    for rep in range(repeats):
         for sample in samples:
             sequence.append(sample)
+            repeat_of.append(rep)
             for arm in arms:
                 collected[arm.name].append(arm.backend.complete(sample, arm.model))
 
@@ -331,22 +420,19 @@ def run_arms(
                 TranscriptEntry(
                     sample=sample,
                     completions={a.name: collected[a.name][i] for a in arms},
+                    repeat=repeat_of[i],
                 )
                 for i, sample in enumerate(sequence)
             ],
+            arm_backends={a.name: type(a.backend).__name__ for a in arms},
+            control=controls[0].name if controls else None,
         )
 
     stats = [summarize_arm(a, collected[a.name], pricing=pricing) for a in arms]
 
+    judgments: dict[str, list[JudgeResult | None]] = {}
     if judge is not None:
-        base_results = collected[base_name]
-        for s in stats:
-            if s.name == base_name:
-                continue
-            mean, scores = judge_arm(judge, sequence, base_results, collected[s.name])
-            s.quality_mean = mean
-            s.quality_n = len(scores)
-            s.quality_scores = scores
+        judgments = _apply_judge(judge, stats, base_name, sequence, collected)
 
     warnings: list[str] = []
     total_calls = len(samples) * repeats
@@ -386,6 +472,11 @@ def run_arms(
             "no judge supplied - this run measures cost and latency only. A "
             "cheaper arm is not a better arm until its output has been scored"
         )
+    if judge is not None and not controls:
+        warnings.append(
+            "no control arm - a judged run needs a same-model control (--control) "
+            "to show how much of each quality score is the judge's own error"
+        )
 
     sources = {s.cost_source for s in stats if s.cost_source != COST_UNAVAILABLE}
     if len(sources) > 1:
@@ -400,6 +491,8 @@ def run_arms(
         arms=stats,
         warnings=warnings,
         transcript=transcript,
+        judge=judge_key_of(judge) if judge is not None else None,
+        judgments=judgments,
     )
 
 
@@ -449,26 +542,31 @@ def rejudge(
         name: [e.completions[name] for e in transcript.entries] for name in names
     }
     arms = [
-        Arm(name=name, backend=_REPLAY_BACKEND, model=transcript.arm_models[name]) for name in names
+        Arm(
+            name=name,
+            backend=_REPLAY_BACKEND,
+            model=transcript.arm_models[name],
+            is_control=name == transcript.control,
+        )
+        for name in names
     ]
     stats = [summarize_arm(a, collected[a.name], pricing=pricing) for a in arms]
-
-    base_results = collected[base_name]
-    for s in stats:
-        if s.name == base_name:
-            continue
-        mean, scores = judge_arm(judge, sequence, base_results, collected[s.name])
-        s.quality_mean = mean
-        s.quality_n = len(scores)
-        s.quality_scores = scores
+    judgments = _apply_judge(judge, stats, base_name, sequence, collected)
 
     warnings = [
         "re-judged from a saved transcript: cost and latency are replayed from "
         "the original run, only the quality scores are new"
     ]
+    if transcript.control is None:
+        warnings.append(
+            "no control arm in this transcript - the judge's own error cannot be "
+            "separated from the difference between models"
+        )
     return ArmsResult(
         n=len(transcript.entries),
         baseline=base_name,
         arms=stats,
         warnings=warnings,
+        judge=judge_key_of(judge),
+        judgments=judgments,
     )
