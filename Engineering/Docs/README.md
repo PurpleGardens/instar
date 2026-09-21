@@ -9,6 +9,7 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 |---|---|
 | **Decide whether a model is good enough** (you own the outcome, not the tool) | [`GUIDE-Setting-the-Bar.md`](GUIDE-Setting-the-Bar.md) |
 | **Learn rubrics by running something** (10 minutes, no spend) | [`LESSON-Rubrics-Hands-On.md`](LESSON-Rubrics-Hands-On.md) |
+| **Find out if a cheaper model is good enough for *your own* prompts** (no app needed, ~1 hour) | [`GUIDE-Measure-Your-Own-Prompts.md`](GUIDE-Measure-Your-Own-Prompts.md) |
 | **Run it and measure a workload** | [`RUNBOOK.md`](RUNBOOK.md) → [`PROVIDERS.md`](PROVIDERS.md) |
 | **Turn a decision into a pass/fail check** | [`GUIDE-Creating-Rubrics.md`](GUIDE-Creating-Rubrics.md) → [`RUBRICS.md`](RUBRICS.md) |
 | **Learn to read a result with judgment** | [`CASE-STUDY-Qwen-Triage.md`](CASE-STUDY-Qwen-Triage.md) |
@@ -23,6 +24,7 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 |---|---|---|---|
 | [`GUIDE-Setting-the-Bar.md`](GUIDE-Setting-the-Bar.md) | one-pager | decision owner | The bar is a business judgment, not a technical one. How to set it, in plain terms — no tool, no jargon. |
 | [`LESSON-Rubrics-Hands-On.md`](LESSON-Rubrics-Hands-On.md) | lesson (do it) | student | Run four commands, change one number, watch a verdict flip. Learn rubrics by feeling them move. |
+| [`GUIDE-Measure-Your-Own-Prompts.md`](GUIDE-Measure-Your-Own-Prompts.md) | task guide | individual | Bring 10–30 of your own prompts; compare your everyday model with cheaper ones under two judges and a control. One key, about an hour. |
 | [`RUNBOOK.md`](RUNBOOK.md) | task guide | operator | Every command, with a walkthrough for measuring your own workload. |
 | [`PROVIDERS.md`](PROVIDERS.md) | task guide | operator | Connecting a hosted LLM (account → key → URL) or a self-hosted SLM (server, sizing, licensing). |
 | [`GUIDE-Creating-Rubrics.md`](GUIDE-Creating-Rubrics.md) | tutorial | operator + decision owner | How to *arrive at* a rubric that decides your question — the method, not just the syntax. |
