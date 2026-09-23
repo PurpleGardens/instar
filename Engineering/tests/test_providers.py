@@ -157,7 +157,7 @@ def test_a_missing_sdk_explains_how_to_install_it(monkeypatch: pytest.MonkeyPatc
         return real_import(name, *a, **kw)  # type: ignore[arg-type]
 
     monkeypatch.setattr(builtins, "__import__", no_anthropic)
-    with pytest.raises(ModuleNotFoundError, match=r"instar\[anthropic\]"):
+    with pytest.raises(ModuleNotFoundError, match=r"instar-harness\[anthropic\]"):
         AnthropicBackend().complete(SAMPLE, "m")
 
 

@@ -165,7 +165,7 @@ Two audiences, two surfaces.
 1. What is this (one sentence).
 2. Who is it for (one sentence).
 3. What it looks like running (one code block, `instar run examples/hello.yaml`, expected output).
-4. Install (`pip install instar` — subject to PyPI availability, see `Naming.md`).
+4. Install (`pip install instar-harness`; bare `instar` is disallowed by PyPI, see `Naming.md`. Import and CLI stay `instar`).
 5. Where to go next (link to docs site).
 6. What it is NOT (the anti-scope from §1, short).
 7. License, contributing, security pointers.
