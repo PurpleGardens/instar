@@ -594,6 +594,36 @@ with `meta.upstream_consent: false` but never opt in on its tenant's behalf) ·
 A corpus holds raw model output for your prompts. It is as private as the
 workload it came from — keep it out of public repositories.
 
+### Read a corpus across runs (`instar corpus`)
+
+Four read-only commands. All take the same filters (`--tenant`, `--workload`,
+`--kind arms|rejudge`, `--since`/`--until YYYY-MM-DD`, `--judge-family`,
+`--judge-model`, `--feature`, `--model`), leave mock runs out unless
+`--include-mock`, show every row's age, and print JSON with `--json`.
+
+```bash
+instar corpus runs ~/instar-corpus                 # what's there, with judge and age
+instar corpus calibration ~/instar-corpus          # each judge's score on the control
+instar corpus scores ~/instar-corpus               # every arm against its control
+instar corpus calls ~/instar-corpus --role control --count
+```
+
+**`calibration`** is the check on your judges. The control serves the
+baseline's own model, so a perfect judge would never mark it down; its control
+score *is* its error. One row per judged run, so with runs on several dates you
+can see whether a judge is drifting. It also prints a **band**: how far two runs
+under that judge can differ by chance.
+
+**`scores`** reads every judged arm against the control **in the same run and
+under the same judge**, sample by sample, and gives a verdict: `better than
+control`, `worse than control`, or `no measurable difference` when the gap is
+inside the band (2 standard errors by default; `--z` to change it). Standard
+errors are computed over *samples*, not calls, because repeats of one prompt are
+not independent evidence. A small workload therefore gets a wide band, and
+"no measurable difference" is often the honest answer; add samples rather than
+lowering `--z`. Never compare scores across judges: each row's judge is printed
+for that reason.
+
 ---
 
 ## 9. Supply your own pricing table

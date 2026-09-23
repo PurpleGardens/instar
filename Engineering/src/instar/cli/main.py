@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The ``instar`` command line.
 
-Two subcommands:
+The subcommands:
 
 - ``instar route`` — replay a workload through a routing policy; measure spend
   saved and quality given up. Sweep a threshold to draw the cost/quality curve.
@@ -11,6 +11,9 @@ Two subcommands:
   endpoint and model; compare latency and cost. The A/B/C shape: direct,
   through a router at the same model, through a router at a cheaper one.
 - ``instar rejudge`` — score a saved arms transcript again with another judge.
+- ``instar corpus`` — read a measurement corpus across runs: list runs and
+  calls, check each judge against its control, and read scores against the
+  noise band.
 
 ``arms`` and ``rejudge`` can also append each run to a measurement corpus
 (``--corpus``), so runs can be read together later. See
@@ -32,6 +35,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from instar.cli.corpus import add_corpus_parser
 from instar.core.arms import Arm, rejudge, run_arms
 from instar.core.catalog import FeatureCatalog
 from instar.core.corpus import (
@@ -730,6 +734,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     gateway.set_defaults(func=_cmd_gateway)
     arms.set_defaults(func=_cmd_arms)
+
+    add_corpus_parser(sub)
 
     return p
 
