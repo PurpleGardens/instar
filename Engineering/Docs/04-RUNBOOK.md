@@ -2,7 +2,7 @@
 
 > **TL;DR:** `pip install -e ".[dev]"`, then `instar route` — that is a complete hermetic run against a shipped fixture, no API key, no network, no spend. To measure your own workload: capture it into a JSONL fixture, write a feature catalog, run `--policy all_strong` for the control, run `--policy feature_category` against it, and read the **routed-weak** quality column. Only go `--live` once the mock run is green, and start with fifty calls, not five thousand.
 
-Task-oriented. For the architecture and how to extend it, see [`CODE-OVERVIEW.md`](./CODE-OVERVIEW.md).
+Task-oriented. For the architecture and how to extend it, see [`10-CODE-OVERVIEW.md`](./10-CODE-OVERVIEW.md).
 
 Every command below was run against this repository. Output is real, trimmed only where noted.
 
@@ -198,7 +198,7 @@ threshold,saved_pct,mean_quality_all,mean_quality_routed_weak,weak_count
 
 This is what Instar is for. The shipped fixtures exist to prove the pipeline works; they say nothing about your traffic. Four steps.
 
-> **No application, just your own prompts?** Use [`GUIDE-Measure-Your-Own-Prompts.md`](GUIDE-Measure-Your-Own-Prompts.md) instead. It turns a folder of everyday prompts into a workload and gives you one recipe to run.
+> **No application, just your own prompts?** Use [`01-GUIDE-Measure-Your-Own-Prompts.md`](01-GUIDE-Measure-Your-Own-Prompts.md) instead. It turns a folder of everyday prompts into a workload and gives you one recipe to run.
 
 ### 5.1 Capture
 
@@ -644,7 +644,7 @@ verdict counts, how often it was **binding** (at the worst level of a non-pass
 verdict), how often it was the **sole decider** (the verdict would have been
 better had it passed), and the range of values it has taken. A dimension that
 has never been binding under any judge has never changed an outcome, which makes
-it a deletion candidate (`RUBRICS.md` §8). Use the `arm.*` metrics (`RUBRICS.md` §3);
+it a deletion candidate (`06-RUBRICS.md` §8). Use the `arm.*` metrics (`06-RUBRICS.md` §3);
 `Engineering/fixtures/rubrics/arms-substitution-example-v1.json` is an example.
 
 **`labels`** reads the saved answers of arms runs whose samples carry

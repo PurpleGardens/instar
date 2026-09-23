@@ -83,5 +83,5 @@ test, and the tool does the rest.
 ---
 
 *Want to see how these numbers become an automatic pass/fail check? That's
-[`GUIDE-Creating-Rubrics.md`](GUIDE-Creating-Rubrics.md) — written for the person
+[`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md) — written for the person
 who runs the test, using the bar you set.*

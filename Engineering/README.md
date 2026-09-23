@@ -13,7 +13,7 @@ Code, tests, examples, fixtures, docs source, and engineering notes for Instar. 
   - `cli/` — `instar route` and `instar gateway`.
 - **`fixtures/`** — synthetic, PII-free workload fixtures plus example feature catalogs. Customer-derived fixtures stay in the private repo (see IP boundary). `tests/test_fixtures.py` asserts that no private product terms appear here.
 - **`tests/`** — `pytest`, all hermetic. Mock mode is always green; live-provider tests sit behind the `live` marker and are skipped in CI.
-- **`Docs/`** — contributor documentation: `CODE-OVERVIEW.md` for orientation, `RUNBOOK.md` for running things.
+- **`Docs/`** — contributor documentation: `10-CODE-OVERVIEW.md` for orientation, `04-RUNBOOK.md` for running things.
 - **`docs/`** — MkDocs Material source for the published site. Not yet scaffolded; see `../Planning/Project-Plan.md`.
 
 The core is **stdlib-only** on purpose: mock mode runs anywhere, `pip install instar` pulls in nothing, and CI never breaks on a provider SDK release. Provider SDKs are optional extras, imported lazily by the module that needs them.
@@ -27,7 +27,7 @@ instar route --traffic Engineering/fixtures/sample-traffic.jsonl \
 pytest -m "not live"
 ```
 
-See `Docs/RUNBOOK.md` for the full set of tasks, including measuring your own workload.
+See `Docs/04-RUNBOOK.md` for the full set of tasks, including measuring your own workload.
 
 ## Src layout note
 

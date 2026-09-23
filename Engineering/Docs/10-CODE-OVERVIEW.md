@@ -2,7 +2,7 @@
 
 > **TL;DR:** Instar replays a captured workload (a JSONL file of `TrafficSample` rows) against candidate models through a routing policy, prices every call, scores what the cheaper model gave up, and writes an auditable report. Four abstractions carry the whole design — `TrafficSample`, `Backend`, `RoutingPolicy`, `Judge` — and each is one small ABC you can subclass. The core is stdlib-only; provider SDKs are optional extras imported lazily. Everything defaults to a hermetic mock mode that costs nothing and is byte-for-byte reproducible.
 
-Audience: a new contributor. For "how do I actually run this", see [`RUNBOOK.md`](./RUNBOOK.md).
+Audience: a new contributor. For "how do I actually run this", see [`04-RUNBOOK.md`](./04-RUNBOOK.md).
 
 ---
 
@@ -157,7 +157,7 @@ Shipped judges:
 | `LLMJudge` | Open-ended generation with no ground truth | Three rungs: `PASS` 1.0, `MARGINAL` 0.5, `FAIL` 0.0. |
 | `AutoJudge` | Mixed workloads | Samples with `meta["gold"]` go to the label judge, everything else to the LLM judge. |
 | `MockJudge` | Hermetic runs | Deterministic; never reads the completion text; measures nothing. |
-| `HumanJudge` | Validating a model judge; any time a person should decide | Reads a filled `instar grade-sheet` CSV. Same PASS/MARGINAL/FAIL rungs. Ungraded rows **abstain** (`Judge.abstains`), so they are unscored rather than passed. See [`GUIDE-Human-Grading.md`](GUIDE-Human-Grading.md). |
+| `HumanJudge` | Validating a model judge; any time a person should decide | Reads a filled `instar grade-sheet` CSV. Same PASS/MARGINAL/FAIL rungs. Ungraded rows **abstain** (`Judge.abstains`), so they are unscored rather than passed. See [`09-GUIDE-Human-Grading.md`](09-GUIDE-Human-Grading.md). |
 
 **Prefer objective scoring.** If your workload permits a label match, use it: it is exact, free, instant, and — unlike an LLM judge — is not itself a model whose judgment you would then have to validate. An LLM judge is a measurement instrument with its own error; a cost study resting on an unvalidated one has moved the uncertainty rather than removed it. Validate `LLMJudge` against hand-graded samples before trusting a number from it.
 
@@ -253,4 +253,4 @@ In this order, with the module docstrings — they carry the reasoning, not just
 6. **`cli/main.py`** — how the pieces are wired for a real invocation, including the mock/live split.
 7. **`Engineering/tests/`** — the test names are written as sentences and double as a specification. `test_route.py` and `test_cli.py` are the best two to read.
 
-Then run everything in [`RUNBOOK.md`](./RUNBOOK.md) against the shipped fixtures. Mock mode costs nothing, so there is no reason to read without running.
+Then run everything in [`04-RUNBOOK.md`](./04-RUNBOOK.md) against the shipped fixtures. Mock mode costs nothing, so there is no reason to read without running.

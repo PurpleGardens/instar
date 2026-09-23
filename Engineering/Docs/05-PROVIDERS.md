@@ -259,8 +259,8 @@ comparisons come from the setup rather than the models.
 
 ## 6. Where to go next
 
-- [`RUNBOOK.md`](RUNBOOK.md) — running Instar, including measuring your own
+- [`04-RUNBOOK.md`](04-RUNBOOK.md) — running Instar, including measuring your own
   workload end to end.
-- [`RUBRICS.md`](RUBRICS.md) — turning measurements into a decision.
-- [`CODE-OVERVIEW.md`](CODE-OVERVIEW.md) — the `Backend` interface, if you need
+- [`06-RUBRICS.md`](06-RUBRICS.md) — turning measurements into a decision.
+- [`10-CODE-OVERVIEW.md`](10-CODE-OVERVIEW.md) — the `Backend` interface, if you need
   to write a provider Instar does not ship.
