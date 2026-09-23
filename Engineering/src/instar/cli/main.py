@@ -64,6 +64,7 @@ from instar.reporters import (
     report_sweep,
 )
 from instar.rubrics.base import Judge
+from instar.rubrics.criteria import CriteriaJudge, CriteriaSet, MockCriteriaBackend
 from instar.rubrics.human import HumanJudge, write_grading_sheet
 from instar.rubrics.judges import (
     AutoJudge,
@@ -415,7 +416,9 @@ def _cmd_arms(args: argparse.Namespace) -> int:
     pricing = load_pricing(args.pricing) if args.pricing else None
 
     judge: Judge | None = None
-    if args.judge:
+    if args.criteria:
+        judge = _criteria_judge(args, mock=mock)
+    elif args.judge:
         if mock:
             judge = MockJudge()
         else:
@@ -479,6 +482,8 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
             )
         ctx = load_run_context(source_dir)
     human = args.grades is not None
+    if human and args.criteria:
+        raise SystemExit("instar: use --grades or --criteria, not both")
     if human and (args.mock_judge or args.blind_judge or args.judge_url):
         raise SystemExit(
             "instar: --grades scores with a person's grades; it cannot be combined "
@@ -491,6 +496,8 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
             judge: Judge = HumanJudge.for_transcript(transcript, args.grades, args.grader)
         except (OSError, ValueError) as e:
             raise SystemExit(f"instar: {e}") from e
+    elif args.criteria:
+        judge = _criteria_judge(args, mock=args.mock_judge)
     elif args.mock_judge:
         judge = MockJudge()
     else:
@@ -511,6 +518,8 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
         print(f"corpus -> {run_dir}")
     if human:
         default_label = f"rejudge-human-{_slug(args.grader)}"
+    elif args.criteria:
+        default_label = f"rejudge-criteria-{'mock' if args.mock_judge else _slug(args.judge_model)}"
     else:
         default_label = f"rejudge-{args.judge_model.replace('/', '-')}"
     label = args.label or default_label
@@ -522,17 +531,43 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
         print(f"  judge: human ({judge.grader}), {len(judge.grades)} graded item(s)")
     else:
         named = "mock" if args.mock_judge else args.judge_model
+        if args.criteria:
+            named = f"criteria ({named}), absolute"
         print(f"  judge: {named}{' (blind)' if args.blind_judge and not args.mock_judge else ''}")
     for w in result.warnings:
         if "not scored by this judge" in w:
             print(f"  note: {w}")
-    print(f"  {base.name:<16} baseline")
+    if base.quality_mean is not None:
+        print(f"  {base.name:<16} baseline, quality {base.quality_mean:.3f} (n={base.quality_n})")
+    else:
+        print(f"  {base.name:<16} baseline")
     for s in result.arms:
         if s.name == result.baseline:
             continue
         q = "unscored" if s.quality_mean is None else f"{s.quality_mean:.3f} (n={s.quality_n})"
         print(f"  {s.name:<16} quality {q}")
     return 0
+
+
+def _criteria_judge(args: argparse.Namespace, *, mock: bool) -> CriteriaJudge:
+    """Build the absolute criteria judge from --criteria and the judge flags."""
+    try:
+        criteria = CriteriaSet.load(args.criteria)
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"instar: {e}") from e
+    if args.blind_judge:
+        raise SystemExit(
+            "instar: --criteria already hides provenance (the judge sees one answer); "
+            "drop --blind-judge"
+        )
+    if mock:
+        return CriteriaJudge(criteria, MockCriteriaBackend(), "mock-judge", family="mock")
+    backend: Backend = (
+        OpenAICompatBackend(args.judge_url, name="judge", api_key_env=args.judge_key_env)
+        if args.judge_url
+        else AnthropicBackend(name="judge")
+    )
+    return CriteriaJudge(criteria, backend, args.judge_model, family=args.judge_family)
 
 
 def _slug(text: str) -> str:
@@ -703,6 +738,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="score every non-baseline arm's output against the baseline's",
     )
     arms.add_argument(
+        "--criteria",
+        metavar="JSON",
+        help="score every arm, baseline included, against a criteria checklist "
+        "(absolute; implies --judge). See Engineering/Docs/GUIDE-Criteria-Judge.md",
+    )
+    arms.add_argument(
         "--blind-judge",
         action="store_true",
         help="hide which answer came from which arm and shuffle their order; "
@@ -765,6 +806,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--mock-judge",
         action="store_true",
         help="score with the deterministic mock judge; measures nothing, exercises the path",
+    )
+    rej.add_argument(
+        "--criteria",
+        metavar="JSON",
+        help="re-score against a criteria checklist (absolute; the baseline is scored too)",
     )
     rej.add_argument(
         "--grades",

@@ -76,6 +76,7 @@ All paths are relative to `Engineering/src/instar/`.
 | `policies/__init__.py` | `build_policy`, `POLICY_NAMES` | Name-to-policy construction, used by the CLI. |
 | `rubrics/base.py` | `Judge` ABC, `JudgeResult` | Relative scoring: not "is this output good?" but "what did we lose by routing this call to the cheap model?" |
 | `rubrics/judges.py` | `MockJudge`, `LabelMatchJudge`, `LLMJudge`, `AutoJudge` | Deterministic, objective, model-based, and dispatching. |
+| `rubrics/criteria.py` | `CriteriaJudge`, `CriteriaSet`, `MockCriteriaBackend` | Absolute scoring: one answer against a per-feature checklist, fraction met, critical criteria gate to 0. |
 | `rubrics/human.py` | `HumanJudge`, `write_grading_sheet`, `load_grades` | A person as the judge: blind CSV export from a transcript, grades read back and scored through `rejudge`. |
 | `reporters/markdown.py` | `report_route`, `report_sweep`, `report_gateway` | Writes `<runs-dir>/<label>/`. Every report carries its own caveats on its face. |
 | `cli/main.py` | `build_parser`, `main`, `_cmd_route`, `_cmd_gateway` | `instar route` and `instar gateway`. Mock is the default; `--live` opts in. |
@@ -157,6 +158,7 @@ Shipped judges:
 | `LLMJudge` | Open-ended generation with no ground truth | Three rungs: `PASS` 1.0, `MARGINAL` 0.5, `FAIL` 0.0. |
 | `AutoJudge` | Mixed workloads | Samples with `meta["gold"]` go to the label judge, everything else to the LLM judge. |
 | `MockJudge` | Hermetic runs | Deterministic; never reads the completion text; measures nothing. |
+| `CriteriaJudge` | No trustworthy baseline, or the thing under test isn't a model swap | **Absolute**: scores each answer against written criteria (YES/NO each); score = fraction met, 0.0 on a critical miss. The baseline is scored too. A sample with no criteria is unscored. See [`GUIDE-Criteria-Judge.md`](GUIDE-Criteria-Judge.md). |
 | `HumanJudge` | Validating a model judge; any time a person should decide | Reads a filled `instar grade-sheet` CSV. Same PASS/MARGINAL/FAIL rungs. Ungraded rows **abstain** (`Judge.abstains`), so they are unscored rather than passed. See [`GUIDE-Human-Grading.md`](GUIDE-Human-Grading.md). |
 
 **Prefer objective scoring.** If your workload permits a label match, use it: it is exact, free, instant, and — unlike an LLM judge — is not itself a model whose judgment you would then have to validate. An LLM judge is a measurement instrument with its own error; a cost study resting on an unvalidated one has moved the uncertainty rather than removed it. Validate `LLMJudge` against hand-graded samples before trusting a number from it.

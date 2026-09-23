@@ -248,11 +248,17 @@ def _apply_judge(
     sequence: list[TrafficSample],
     collected: dict[str, list[CompletionResult]],
 ) -> dict[str, list[JudgeResult | None]]:
-    """Judge every non-baseline arm; fill its quality fields; return per-call results."""
+    """Judge every non-baseline arm; fill its quality fields; return per-call results.
+
+    Under an absolute judge the baseline is judged too, paired with itself: the
+    judge reads only the candidate side, so this scores the baseline's own
+    answers against the task.
+    """
     judgments: dict[str, list[JudgeResult | None]] = {}
     base_results = collected[base_name]
+    absolute = bool(getattr(judge, "absolute", False))
     for s in stats:
-        if s.name == base_name:
+        if s.name == base_name and not absolute:
             continue
         calls = judge_calls(judge, sequence, base_results, collected[s.name])
         scores = [r.score for r in calls if r is not None]

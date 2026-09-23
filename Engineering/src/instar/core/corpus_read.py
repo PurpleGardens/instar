@@ -241,7 +241,16 @@ def judge_label(judge: JudgeKey | None) -> str:
     parts = [judge.kind]
     if judge.model:
         parts.append(judge.model)
-    tags = [t for t in (judge.family, "blind" if judge.blind else None) if t]
+    tags = [
+        t
+        for t in (
+            judge.family,
+            "blind" if judge.blind else None,
+            "absolute" if judge.absolute else None,
+            f"v={judge.version}" if judge.version else None,
+        )
+        if t
+    ]
     label = ":".join(parts)
     return f"{label} [{', '.join(tags)}]" if tags else label
 
@@ -326,6 +335,10 @@ class CalibrationRow:
     gold_version: str | None
     control: SampleStats
     noise_band: float | None
+    # Absolute judges score the baseline too, so the control's true score is the
+    # baseline's, not 1.0. For those rows ``control`` holds control minus
+    # baseline, paired by sample: 0.0 is a judge that never told the two apart.
+    absolute: bool = False
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -344,6 +357,7 @@ class CalibrationRow:
             "n_calls": self.control.n_calls,
             "n_samples": self.control.n_samples,
             "noise_band": self.noise_band,
+            "absolute": self.absolute,
         }
 
 
@@ -367,7 +381,16 @@ def calibration(
     for run in select_runs(runs, flt):
         if run.judge is None:
             continue
-        stats = sample_stats(r for r in run.calls() if ctrl_flt.call_matches(r))
+        absolute = run.judge.absolute
+        if absolute:
+            base_flt = replace(flt, role=ROLE_BASELINE, model=None)
+            calls = list(run.calls())
+            stats = paired_difference(
+                [r for r in calls if ctrl_flt.call_matches(r)],
+                [r for r in calls if base_flt.call_matches(r)],
+            )
+        else:
+            stats = sample_stats(r for r in run.calls() if ctrl_flt.call_matches(r))
         if stats is None:
             continue
         band = None if stats.se is None else z * math.sqrt(2) * stats.se
@@ -385,6 +408,7 @@ def calibration(
                 gold_version=run.gold_version,
                 control=stats,
                 noise_band=band,
+                absolute=absolute,
             )
         )
     rows.sort(key=lambda r: (r.judge, r.recorded_at, r.run_id))
