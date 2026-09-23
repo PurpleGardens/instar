@@ -40,6 +40,7 @@ from instar.core.arms import Arm, rejudge, run_arms
 from instar.core.catalog import FeatureCatalog
 from instar.core.corpus import (
     ORIGINS,
+    SPLIT_ROLES,
     RecordContext,
     find_corpus_root,
     load_run_context,
@@ -540,6 +541,7 @@ def _record_context(args: argparse.Namespace, *, mock: bool, traffic: str | None
             rubric_version=args.rubric_version,
             gold_version=args.gold_version,
             mock=mock,
+            split_role=args.split_role,
         )
     except ValueError as e:
         raise SystemExit(f"instar: {e}") from e
@@ -574,6 +576,12 @@ def _add_corpus_args(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument("--rubric-version", help="version of the rubric these scores are read against")
     p.add_argument("--gold-version", help="version of the workload's gold labels, if any")
+    p.add_argument(
+        "--split-role",
+        choices=sorted(SPLIT_ROLES),
+        help="what this workload is for: evolve (tuned on), held_out (checks tuning), "
+        "or standard (the frozen yardstick, never tuned against)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:

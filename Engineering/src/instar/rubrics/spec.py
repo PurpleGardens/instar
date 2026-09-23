@@ -110,6 +110,60 @@ METRICS: dict[str, Callable[[RouteResult], float | None]] = {
 
 
 @dataclass(frozen=True)
+class ArmView:
+    """One arm of a stored ``instar arms`` run, as a rubric sees it.
+
+    Built from the ``arms`` block of a corpus ``run.json``, so a rubric can be
+    applied to history at read time: agree a new rubric, then ask how every run
+    already on disk would have fared under it, without re-running anything.
+    ``baseline`` and ``control`` are the same run's baseline and control arms.
+    """
+
+    arm: Mapping[str, Any]
+    baseline: Mapping[str, Any]
+    control: Mapping[str, Any] | None = None
+
+
+def _num(d: Mapping[str, Any] | None, key: str) -> float | None:
+    if d is None:
+        return None
+    v = d.get(key)
+    return None if v is None else float(v)
+
+
+def _arm_quality_min(v: ArmView) -> float | None:
+    scores = [float(x) for x in v.arm.get("quality_scores") or []]
+    return min(scores) if scores else None
+
+
+def _arm_quality_vs_control(v: ArmView) -> float | None:
+    q, c = _num(v.arm, "quality_mean"), _num(v.control, "quality_mean")
+    return None if q is None or not c else q / c
+
+
+def _arm_cost_saved_pct(v: ArmView) -> float | None:
+    # A cost that nobody reported and no table priced is unknown, not zero.
+    if "unavailable" in (v.arm.get("cost_source"), v.baseline.get("cost_source")):
+        return None
+    a, b = _num(v.arm, "cost_per_1k_calls_usd"), _num(v.baseline, "cost_per_1k_calls_usd")
+    return None if a is None or not b else 100.0 * (1.0 - a / b)
+
+
+# Metrics for a stored arms run, one arm at a time. Same rules as METRICS:
+# None means "not measured", which is never a pass.
+ARM_METRICS: dict[str, Callable[[ArmView], float | None]] = {
+    "arm.quality_mean": lambda v: _num(v.arm, "quality_mean"),
+    "arm.quality_min": _arm_quality_min,
+    "arm.quality_vs_control": _arm_quality_vs_control,
+    "arm.cost_saved_pct": _arm_cost_saved_pct,
+    "arm.p50_ms": lambda v: _num(v.arm, "p50_ms"),
+    "arm.p95_ms": lambda v: _num(v.arm, "p95_ms"),
+    "arm.ms_per_output_token": lambda v: _num(v.arm, "ms_per_output_token"),
+    "arm.error_count": lambda v: _num(v.arm, "n_err"),
+}
+
+
+@dataclass(frozen=True)
 class Dimension:
     """One thing you decided to hold the configuration to."""
 
@@ -122,10 +176,10 @@ class Dimension:
     rationale: str = ""
 
     def __post_init__(self) -> None:
-        if self.metric not in METRICS:
+        if self.metric not in METRICS and self.metric not in ARM_METRICS:
             raise ValueError(
                 f"dimension {self.id!r}: unknown metric {self.metric!r}. "
-                f"Available: {', '.join(sorted(METRICS))}"
+                f"Available: {', '.join(sorted({*METRICS, *ARM_METRICS}))}"
             )
         if self.direction not in DIRECTIONS:
             raise ValueError(
@@ -278,10 +332,45 @@ class Rubric:
             raise ValueError(f"{path}: dimension missing required field {e}") from e
 
     def evaluate(self, result: RouteResult) -> RubricVerdict:
-        """Apply this rubric to a completed run."""
+        """Apply this rubric to a completed routing run."""
+        values = {
+            d.metric: METRICS[d.metric](result) for d in self.dimensions if d.metric in METRICS
+        }
+        notes: list[str] = []
+        if result.error_count:
+            notes.append(
+                f"{result.error_count}/{result.n} calls failed; this verdict rests on "
+                f"partial data and should not be acted on until the run is clean"
+            )
+        notes.extend(result.warnings)
+        return self.evaluate_values(values, notes)
+
+    def evaluate_arm(self, view: ArmView) -> RubricVerdict:
+        """Apply this rubric to one arm of a stored ``instar arms`` run."""
+        values = {
+            d.metric: ARM_METRICS[d.metric](view)
+            for d in self.dimensions
+            if d.metric in ARM_METRICS
+        }
+        notes: list[str] = []
+        if view.arm.get("n_err"):
+            notes.append(
+                f"{view.arm.get('n_err')} calls failed on this arm; this verdict rests on "
+                "partial data"
+            )
+        return self.evaluate_values(values, notes)
+
+    def evaluate_values(
+        self, values: Mapping[str, float | None], notes: list[str] | None = None
+    ) -> RubricVerdict:
+        """Apply this rubric to metric values already computed.
+
+        A dimension whose metric is missing from ``values`` (a routing metric
+        asked of an arms run, say) is UNMEASURED, like any metric without a value.
+        """
         dimension_verdicts: list[DimensionVerdict] = []
         for dim in self.dimensions:
-            value = METRICS[dim.metric](result)
+            value = values.get(dim.metric)
             dimension_verdicts.append(
                 DimensionVerdict(
                     id=dim.id,
@@ -301,14 +390,7 @@ class Rubric:
             (d.verdict for d in dimension_verdicts), key=VERDICT_ORDER.index, default=UNMEASURED
         )
 
-        notes: list[str] = []
-        if result.error_count:
-            notes.append(
-                f"{result.error_count}/{result.n} calls failed; this verdict rests on "
-                f"partial data and should not be acted on until the run is clean"
-            )
-        for w in result.warnings:
-            notes.append(w)
+        notes = list(notes or [])
         for d in dimension_verdicts:
             if d.verdict == UNMEASURED:
                 notes.append(
@@ -318,6 +400,35 @@ class Rubric:
         return RubricVerdict(
             rubric=self.name, verdict=overall, dimensions=dimension_verdicts, notes=notes
         )
+
+
+def binding_dimensions(verdict: RubricVerdict) -> list[str]:
+    """The dimensions that set this verdict: those at the worst level, unless it passed.
+
+    A dimension that is never binding, run after run, never changed anyone's
+    action and is a candidate for deletion (RUBRICS.md §8).
+    """
+    if verdict.verdict == PASS:
+        return []
+    return [d.id for d in verdict.dimensions if d.verdict == verdict.verdict]
+
+
+def sole_deciders(verdict: RubricVerdict) -> list[str]:
+    """The dimensions that decided this verdict on their own.
+
+    A sole decider is one whose passing would have lifted the overall verdict.
+    When two dimensions fail together, both are binding and neither is a sole
+    decider: fixing either alone would change nothing.
+    """
+    overall = VERDICT_ORDER.index(verdict.verdict)
+    out: list[str] = []
+    for d in verdict.dimensions:
+        if d.verdict == PASS:
+            continue
+        others = [VERDICT_ORDER.index(x.verdict) for x in verdict.dimensions if x is not d]
+        if min(others, default=VERDICT_ORDER.index(PASS)) > overall:
+            out.append(d.id)
+    return out
 
 
 def evaluate_rubric(result: RouteResult, rubric: Rubric) -> RubricVerdict:

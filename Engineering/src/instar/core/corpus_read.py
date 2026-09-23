@@ -38,8 +38,26 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from instar.core.corpus import KIND_ARMS, ROLE_BASELINE, ROLE_CONTROL, SCHEMA_VERSION
+from instar.core.corpus import (
+    KIND_ARMS,
+    KIND_REJUDGE,
+    ROLE_BASELINE,
+    ROLE_CONTROL,
+    SCHEMA_VERSION,
+)
+from instar.core.transcript import Transcript
 from instar.rubrics.base import JudgeKey
+from instar.rubrics.judges import extract_label, normalize_labels
+from instar.rubrics.spec import (
+    FAIL,
+    MARGINAL,
+    PASS,
+    UNMEASURED,
+    ArmView,
+    Rubric,
+    binding_dimensions,
+    sole_deciders,
+)
 
 DEFAULT_Z = 2.0
 
@@ -94,6 +112,11 @@ class CorpusRun:
     @property
     def gold_version(self) -> str | None:
         v = self.record.get("gold_version")
+        return None if v is None else str(v)
+
+    @property
+    def split_role(self) -> str | None:
+        v = self.record.get("split_role")
         return None if v is None else str(v)
 
     def calls(self) -> list[dict[str, Any]]:
@@ -492,3 +515,317 @@ def scores(
                 )
             )
     return rows
+
+
+# ── how often a workload has been looked at ──────────────────────────────
+
+
+@dataclass(frozen=True)
+class LooksRow:
+    """How many times one workload (at one gold version) has been measured.
+
+    Every arms run is a fresh look at the tasks; a re-judge re-reads the same
+    answers and is counted apart. The count is an upper bound on the decisions
+    the workload has informed, which is the thing that wears a set out.
+    """
+
+    tenant_id: str
+    workload_id: str | None
+    gold_version: str | None
+    split_roles: tuple[str, ...]
+    arms_runs: int
+    rejudge_runs: int
+    first: datetime
+    last: datetime
+    age_days: int
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "tenant_id": self.tenant_id,
+            "workload_id": self.workload_id,
+            "gold_version": self.gold_version,
+            "split_roles": list(self.split_roles),
+            "arms_runs": self.arms_runs,
+            "rejudge_runs": self.rejudge_runs,
+            "first": self.first.isoformat(timespec="seconds"),
+            "last": self.last.isoformat(timespec="seconds"),
+            "age_days": self.age_days,
+        }
+
+
+def looks(
+    runs: Iterable[CorpusRun], flt: CorpusFilter, *, now: datetime | None = None
+) -> list[LooksRow]:
+    """Runs per (tenant, workload, gold version), with the roles they were run under."""
+    now = now or datetime.now(UTC)
+    groups: dict[tuple[str, str | None, str | None], list[CorpusRun]] = {}
+    for run in select_runs(runs, flt):
+        groups.setdefault((run.tenant_id, run.workload_id, run.gold_version), []).append(run)
+    rows: list[LooksRow] = []
+    for (tenant, workload, gold), rs in sorted(groups.items(), key=lambda kv: str(kv[0])):
+        first = min(r.recorded_at for r in rs)
+        last = max(r.recorded_at for r in rs)
+        roles = tuple(sorted({r.split_role or "unset" for r in rs}))
+        rows.append(
+            LooksRow(
+                tenant_id=tenant,
+                workload_id=workload,
+                gold_version=gold,
+                split_roles=roles,
+                arms_runs=sum(1 for r in rs if r.kind == KIND_ARMS),
+                rejudge_runs=sum(1 for r in rs if r.kind == KIND_REJUDGE),
+                first=first,
+                last=last,
+                age_days=age_days(last, now),
+            )
+        )
+    return rows
+
+
+# ── rubric archaeology ───────────────────────────────────────────────────
+
+
+@dataclass
+class DimensionHistory:
+    """How one rubric dimension has behaved across every arm it was applied to."""
+
+    dimension: str
+    metric: str
+    judge: str
+    n: int = 0
+    counts: dict[str, int] | None = None
+    binding: int = 0
+    sole: int = 0
+    lo: float | None = None
+    hi: float | None = None
+    oldest_days: int = 0
+    newest_days: int = 0
+
+    def add(self, value: float | None, verdict: str, bind: bool, sole: bool, age: int) -> None:
+        if self.counts is None:
+            self.counts = {PASS: 0, MARGINAL: 0, FAIL: 0, UNMEASURED: 0}
+            self.oldest_days = self.newest_days = age
+        self.n += 1
+        self.counts[verdict] += 1
+        self.binding += int(bind)
+        self.sole += int(sole)
+        if value is not None:
+            self.lo = value if self.lo is None else min(self.lo, value)
+            self.hi = value if self.hi is None else max(self.hi, value)
+        self.oldest_days = max(self.oldest_days, age)
+        self.newest_days = min(self.newest_days, age)
+
+    @property
+    def never_binding(self) -> bool:
+        return self.n > 0 and self.binding == 0
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "dimension": self.dimension,
+            "metric": self.metric,
+            "judge": self.judge,
+            "n": self.n,
+            "counts": dict(self.counts or {}),
+            "binding": self.binding,
+            "sole_decider": self.sole,
+            "min": self.lo,
+            "max": self.hi,
+            "never_binding": self.never_binding,
+            "age_days": [self.newest_days, self.oldest_days],
+        }
+
+
+def rubric_archaeology(
+    runs: Iterable[CorpusRun],
+    flt: CorpusFilter,
+    rubric: Rubric,
+    *,
+    now: datetime | None = None,
+) -> tuple[list[DimensionHistory], dict[str, int]]:
+    """Apply ``rubric`` to every candidate arm already in the corpus.
+
+    Returns one history per (dimension, judge), in rubric order, and the
+    overall verdict counts. Quality metrics depend on the judge, so each judge
+    gets its own rows; comparing them is how you learn whether a dimension
+    only ever binds under one judge. The baseline and control arms are not
+    candidates and are skipped. Model and role filters choose the arms.
+    """
+    now = now or datetime.now(UTC)
+    order = {d.id: i for i, d in enumerate(rubric.dimensions)}
+    metric = {d.id: d.metric for d in rubric.dimensions}
+    hist: dict[tuple[str, str], DimensionHistory] = {}
+    overall: dict[str, int] = {PASS: 0, MARGINAL: 0, FAIL: 0, UNMEASURED: 0}
+    for run in select_runs(runs, flt):
+        arms = {str(a["name"]): a for a in run.record.get("arms") or []}
+        base_name = run.record.get("baseline")
+        if base_name not in arms:
+            continue
+        base = arms[str(base_name)]
+        ctl_name = run.record.get("control")
+        ctl = arms.get(str(ctl_name)) if ctl_name else None
+        judge = judge_label(run.judge)
+        age = age_days(run.recorded_at, now)
+        for name, arm in sorted(arms.items()):
+            if name in (base_name, ctl_name):
+                continue
+            if flt.model is not None and flt.model != arm.get("model"):
+                continue
+            verdict = rubric.evaluate_arm(ArmView(arm, base, ctl))
+            overall[verdict.verdict] += 1
+            bind, sole = set(binding_dimensions(verdict)), set(sole_deciders(verdict))
+            for d in verdict.dimensions:
+                h = hist.setdefault((d.id, judge), DimensionHistory(d.id, metric[d.id], judge))
+                h.add(d.value, d.verdict, d.id in bind, d.id in sole, age)
+    rows = sorted(hist.values(), key=lambda h: (order[h.dimension], h.judge))
+    return rows, overall
+
+
+# ── label-ceiling detector ───────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class LabelFlag:
+    """Models that agree with each other, and not with the gold label.
+
+    When independent models land on the same answer and the key says
+    otherwise, the key is the likelier mistake. A flag is a question for the
+    person who owns the gold labels, not a verdict.
+    """
+
+    run_id: str
+    recorded_at: datetime
+    age_days: int
+    workload_id: str | None
+    gold_version: str | None
+    sample_id: str
+    feature: str
+    gold: str
+    consensus: str
+    agreeing: tuple[str, ...]
+    n_models: int
+    consistency: float
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "recorded_at": self.recorded_at.isoformat(timespec="seconds"),
+            "age_days": self.age_days,
+            "workload_id": self.workload_id,
+            "gold_version": self.gold_version,
+            "sample_id": self.sample_id,
+            "feature": self.feature,
+            "gold": self.gold,
+            "consensus": self.consensus,
+            "agreeing_models": list(self.agreeing),
+            "n_models": self.n_models,
+            "consistency": self.consistency,
+        }
+
+
+def _majority(labels: list[str | None]) -> tuple[str | None, float]:
+    """The most common label and the share of repeats that gave it."""
+    if not labels:
+        return None, 0.0
+    counts: dict[str | None, int] = {}
+    for x in labels:
+        counts[x] = counts.get(x, 0) + 1
+    top = max(counts.items(), key=lambda kv: (kv[1], kv[0] is not None, str(kv[0])))
+    return top[0], top[1] / len(labels)
+
+
+@dataclass(frozen=True)
+class LabelReport:
+    """What the label-ceiling detector found.
+
+    ``accuracy`` is each model's share of samples whose majority label matched
+    gold, as (matched, examined). Read it after the flags: until a flagged label
+    is checked, a model's "miss" on it may be the key's mistake.
+    """
+
+    flags: list[LabelFlag]
+    examined: int
+    accuracy: dict[str, tuple[int, int]]
+
+
+def label_ceiling(
+    runs: Iterable[CorpusRun],
+    flt: CorpusFilter,
+    *,
+    labels: Iterable[str] | None = None,
+    min_models: int = 2,
+    now: datetime | None = None,
+) -> LabelReport:
+    """Flag samples where ``min_models`` or more distinct models agree against gold.
+
+    Reads the transcripts of arms runs (a re-judge adds no new answers). The
+    label set is ``labels`` or, when not given, every gold value in the run; an
+    answer outside the set reads as no label, so pass ``labels`` when some
+    valid label never appears as gold.
+    Each model's answer to a sample is its majority label across repeats. A
+    control arm serves the baseline's model and is not a second opinion, so
+    models are counted by what was requested, not by arm.
+    """
+    now = now or datetime.now(UTC)
+    flags: list[LabelFlag] = []
+    examined = 0
+    accuracy: dict[str, list[int]] = {}
+    for run in select_runs(runs, flt):
+        if run.kind != KIND_ARMS or not (run.run_dir / "transcript.json").is_file():
+            continue
+        tr = Transcript.load(run.run_dir / "transcript.json")
+        golds = {
+            e.sample.id: str(e.sample.meta["gold"]).lower()
+            for e in tr.entries
+            if e.sample.meta.get("gold") is not None
+        }
+        if not golds:
+            continue
+        label_set = normalize_labels(labels if labels is not None else golds.values())
+        # model -> sample -> labels over repeats (and over arms sharing a model)
+        answers: dict[str, dict[str, list[str | None]]] = {}
+        features: dict[str, str] = {}
+        for e in tr.entries:
+            sid = e.sample.id
+            if sid not in golds:
+                continue
+            if flt.feature is not None and e.sample.feature != flt.feature:
+                continue
+            features[sid] = e.sample.feature
+            for arm, c in e.completions.items():
+                if not c.ok:
+                    continue
+                model = tr.arm_models[arm]
+                answers.setdefault(model, {}).setdefault(sid, []).append(
+                    extract_label(c.text, label_set)
+                )
+        examined += len(features)
+        for sid in sorted(features):
+            votes = {m: _majority(by[sid]) for m, by in answers.items() if sid in by}
+            for model, (lab, _) in votes.items():
+                acc = accuracy.setdefault(model, [0, 0])
+                acc[0] += int(lab == golds[sid])
+                acc[1] += 1
+            agree: dict[str, list[tuple[str, float]]] = {}
+            for model, (lab, share) in votes.items():
+                if lab is not None and lab != golds[sid]:
+                    agree.setdefault(lab, []).append((model, share))
+            for lab, members in sorted(agree.items()):
+                if len(members) < min_models:
+                    continue
+                flags.append(
+                    LabelFlag(
+                        run_id=run.run_id,
+                        recorded_at=run.recorded_at,
+                        age_days=age_days(run.recorded_at, now),
+                        workload_id=run.workload_id,
+                        gold_version=run.gold_version,
+                        sample_id=sid,
+                        feature=features[sid],
+                        gold=golds[sid],
+                        consensus=lab,
+                        agreeing=tuple(sorted(m for m, _ in members)),
+                        n_models=len(votes),
+                        consistency=min(share for _, share in members),
+                    )
+                )
+    return LabelReport(flags, examined, {m: (a[0], a[1]) for m, a in sorted(accuracy.items())})
