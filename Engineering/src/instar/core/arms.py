@@ -195,10 +195,17 @@ def judge_calls(
     A pair where either side failed is skipped rather than scored 0.0: a network
     error is not a quality signal, and folding it in would let an unreliable arm
     look like a *bad* arm instead of a broken one. Those two need different fixes.
+
+    A pair the judge :meth:`~instar.rubrics.base.Judge.abstains` on (a human
+    grader who left the row blank) is skipped the same way: unscored, not 0.0.
     """
     out: list[JudgeResult | None] = []
+    abstains = getattr(judge, "abstains", None)
     for sample, base, arm in zip(samples, baseline_results, arm_results, strict=True):
         if not base.ok or not arm.ok:
+            out.append(None)
+            continue
+        if callable(abstains) and abstains(sample, base, arm):
             out.append(None)
             continue
         out.append(judge.score(sample, base, arm))
@@ -557,6 +564,17 @@ def rejudge(
         "re-judged from a saved transcript: cost and latency are replayed from "
         "the original run, only the quality scores are new"
     ]
+    abstained = sum(
+        1
+        for name, calls in judgments.items()
+        for base, arm, jr in zip(collected[base_name], collected[name], calls, strict=True)
+        if base.ok and arm.ok and jr is None
+    )
+    if abstained:
+        warnings.append(
+            f"{abstained} pair(s) were not scored by this judge (for a human judge, "
+            "rows left ungraded); quality is over the scored pairs only"
+        )
     if transcript.control is None:
         warnings.append(
             "no control arm in this transcript - the judge's own error cannot be "
