@@ -118,7 +118,14 @@ class TestJudgeKey:
 
     def test_result_json_carries_the_judge(self) -> None:
         d = _run().to_json()
-        assert d["judge"] == {"kind": "mock", "model": None, "family": None, "blind": False}
+        assert d["judge"] == {
+            "kind": "mock",
+            "model": None,
+            "family": None,
+            "blind": False,
+            "absolute": False,
+            "version": None,
+        }
         assert d["control"] == "ctl"
 
 

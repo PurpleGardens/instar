@@ -303,13 +303,26 @@ def report_arms(
         "",
         "## Quality",
         "",
-        f"Relative to `{result.baseline}`, 1.0 = as good. PASS 1.0 / MARGINAL 0.5 / FAIL 0.0.",
-        "",
-        "| arm | quality | scored | PASS | MARGINAL | FAIL |",
-        "|---|---|---|---|---|---|",
     ]
+    absolute = result.judge is not None and result.judge.absolute
+    if absolute:
+        lines += [
+            "Absolute: each answer scored on its own against the criteria, baseline "
+            "included. Score = share of criteria met; a failed critical criterion "
+            "scores 0.0.",
+            "",
+            "| arm | quality | scored | all met | partial | none / critical |",
+            "|---|---|---|---|---|---|",
+        ]
+    else:
+        lines += [
+            f"Relative to `{result.baseline}`, 1.0 = as good. PASS 1.0 / MARGINAL 0.5 / FAIL 0.0.",
+            "",
+            "| arm | quality | scored | PASS | MARGINAL | FAIL |",
+            "|---|---|---|---|---|---|",
+        ]
     for s in result.arms:
-        if s.name == result.baseline:
+        if s.name == result.baseline and not absolute:
             lines.append(f"| {s.name} | — (baseline) | | | | |")
         elif s.quality_mean is None:
             lines.append(f"| {s.name} | **unscored** | 0 | | | |")

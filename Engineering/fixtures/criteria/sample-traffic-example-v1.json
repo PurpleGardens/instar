@@ -1,0 +1,34 @@
+{
+  "version": "sample-traffic-example-v1",
+  "_note": "Illustrative only. Criteria for a real workload are yours to write: short, checkable statements an answer either meets or does not. Mark a criterion critical when missing it makes the answer unusable however good the rest is.",
+  "default": [
+    "Answers the task that was asked, not a different one",
+    {"id": "no-invention", "text": "Does not state facts, figures or policies that the task does not give", "critical": true}
+  ],
+  "features": {
+    "support.ticket_classification": [
+      {"id": "one-label", "text": "Replies with exactly one of the labels the task lists", "critical": true},
+      "Contains no text besides the label"
+    ],
+    "campaign.copy_generation": [
+      "Is within 10 words of the requested length",
+      "Names the product or service the task describes",
+      "Ends with a call to action",
+      {"id": "no-invention", "text": "Does not invent prices, dates or offers the task does not give", "critical": true}
+    ],
+    "content.seo_metadata": [
+      {"id": "valid-json", "text": "Is valid JSON with exactly the keys the task asks for", "critical": true},
+      "The meta description is under 160 characters",
+      "Gives exactly five keywords"
+    ],
+    "sales.lead_enrichment": [
+      {"id": "valid-json", "text": "Is valid JSON with the keys the task asks for", "critical": true},
+      {"id": "no-invention", "text": "Marks unknown fields as unknown rather than guessing specific values", "critical": true}
+    ],
+    "ops.status_rollup": [
+      "Uses the number of bullets the task asks for",
+      "Reports every failure or anomaly the task mentions",
+      {"id": "no-speculation", "text": "Does not speculate about causes the task does not state", "critical": true}
+    ]
+  }
+}
