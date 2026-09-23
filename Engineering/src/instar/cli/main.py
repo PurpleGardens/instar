@@ -64,6 +64,7 @@ from instar.reporters import (
     report_sweep,
 )
 from instar.rubrics.base import Judge
+from instar.rubrics.human import HumanJudge, write_grading_sheet
 from instar.rubrics.judges import (
     AutoJudge,
     BlindPairwiseJudge,
@@ -477,8 +478,21 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
                 "scores can point at the generations they judged"
             )
         ctx = load_run_context(source_dir)
-    if args.mock_judge:
-        judge: Judge = MockJudge()
+    human = args.grades is not None
+    if human and (args.mock_judge or args.blind_judge or args.judge_url):
+        raise SystemExit(
+            "instar: --grades scores with a person's grades; it cannot be combined "
+            "with --mock-judge, --blind-judge or --judge-url"
+        )
+    if human and not args.grader:
+        raise SystemExit("instar: --grades needs --grader (a pseudonymous id such as grader-1)")
+    if human:
+        try:
+            judge: Judge = HumanJudge.for_transcript(transcript, args.grades, args.grader)
+        except (OSError, ValueError) as e:
+            raise SystemExit(f"instar: {e}") from e
+    elif args.mock_judge:
+        judge = MockJudge()
     else:
         judge_backend: Backend = (
             OpenAICompatBackend(args.judge_url, name="judge", api_key_env=args.judge_key_env)
@@ -495,18 +509,46 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
     if ctx is not None:
         run_dir = write_run(args.corpus, result, transcript, ctx, source_run_dir=source_dir)
         print(f"corpus -> {run_dir}")
-    label = args.label or f"rejudge-{args.judge_model.replace('/', '-')}"
+    if human:
+        default_label = f"rejudge-human-{_slug(args.grader)}"
+    else:
+        default_label = f"rejudge-{args.judge_model.replace('/', '-')}"
+    label = args.label or default_label
     d = report_arms(result, label, mock=args.mock_judge, runs_dir=args.runs_dir)
     print(f"rejudge -> {d}")
     base = result.by_name(result.baseline)
-    named = "mock" if args.mock_judge else args.judge_model
-    print(f"  judge: {named}{' (blind)' if args.blind_judge and not args.mock_judge else ''}")
+    if human:
+        assert isinstance(judge, HumanJudge)
+        print(f"  judge: human ({judge.grader}), {len(judge.grades)} graded item(s)")
+    else:
+        named = "mock" if args.mock_judge else args.judge_model
+        print(f"  judge: {named}{' (blind)' if args.blind_judge and not args.mock_judge else ''}")
+    for w in result.warnings:
+        if "not scored by this judge" in w:
+            print(f"  note: {w}")
     print(f"  {base.name:<16} baseline")
     for s in result.arms:
         if s.name == result.baseline:
             continue
         q = "unscored" if s.quality_mean is None else f"{s.quality_mean:.3f} (n={s.quality_n})"
         print(f"  {s.name:<16} quality {q}")
+    return 0
+
+
+def _slug(text: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_" else "-" for c in text).strip("-") or "grader"
+
+
+def _cmd_grade_sheet(args: argparse.Namespace) -> int:
+    transcript = Transcript.load(args.transcript)
+    try:
+        n = write_grading_sheet(transcript, args.out, seed=args.seed, overwrite=args.force)
+    except FileExistsError as e:
+        raise SystemExit(f"instar: {e} (pass --force to replace it)") from e
+    print(f"grade-sheet -> {args.out}")
+    print(f"  {n} item(s) to grade; arm names and models are not shown to the grader")
+    print("  fill the grade column with PASS, MARGINAL or FAIL (blank = not graded), then:")
+    print(f"  instar rejudge {args.transcript} --grades {args.out} --grader <id>")
     return 0
 
 
@@ -724,7 +766,34 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="score with the deterministic mock judge; measures nothing, exercises the path",
     )
+    rej.add_argument(
+        "--grades",
+        metavar="CSV",
+        help="score with a person's filled grading sheet (from `instar grade-sheet`) "
+        "instead of a model judge",
+    )
+    rej.add_argument(
+        "--grader",
+        help="pseudonymous id for the person who graded (e.g. grader-1); recorded as "
+        "the judge, so not a name or email",
+    )
     rej.set_defaults(func=_cmd_rejudge)
+
+    gs = sub.add_parser(
+        "grade-sheet",
+        help="export a blind grading sheet (CSV) from a saved arms transcript",
+        description="Write one row per (prompt, candidate answer) with the reference "
+        "answer beside it, shuffled and with no arm names or models, for a person to "
+        "grade PASS / MARGINAL / FAIL in a spreadsheet. Score it back with "
+        "`instar rejudge --grades`.",
+    )
+    gs.add_argument("transcript", help="transcript written by `instar arms --save-transcript`")
+    gs.add_argument("-o", "--out", default="grading-sheet.csv", help="where to write the CSV")
+    gs.add_argument("--seed", type=int, default=0, help="shuffle seed (the order reproduces)")
+    gs.add_argument(
+        "--force", action="store_true", help="replace an existing file (it may hold grades)"
+    )
+    gs.set_defaults(func=_cmd_grade_sheet)
 
     gateway = sub.add_parser(
         "gateway", help="compare two gateways or endpoints on per-call latency"

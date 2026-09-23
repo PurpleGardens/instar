@@ -133,6 +133,20 @@ class Judge(ABC):
         """Identify this judge. Model-based judges override to add model and family."""
         return JudgeKey(kind=self.name)
 
+    def abstains(
+        self,
+        sample: TrafficSample,
+        strong: CompletionResult,
+        weak: CompletionResult,
+    ) -> bool:
+        """True when this judge has no opinion on the pair and it should go unscored.
+
+        A model judge always has an opinion. A human grader may have graded
+        only some rows; an ungraded pair is *unscored*, which is not a pass and
+        not a fail, so the runner skips it the way it skips a failed call.
+        """
+        return False
+
     @abstractmethod
     def score(
         self,
