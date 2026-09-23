@@ -174,11 +174,11 @@ compose with them than lose slowly to all four.
 ## Pointers
 
 - smevals — <https://github.com/prime-radiant-inc/smevals> (MIT)
-- Instar — [`README.md`](../../README.md) · [`RUNBOOK.md`](RUNBOOK.md) (measure your own
-  workload) · [`RUBRICS.md`](RUBRICS.md) (the verdict model) ·
-  [`GUIDE-Setting-the-Bar.md`](GUIDE-Setting-the-Bar.md) (why the bar goes up front)
+- Instar — [`README.md`](../../README.md) · [`04-RUNBOOK.md`](04-RUNBOOK.md) (measure your own
+  workload) · [`06-RUBRICS.md`](06-RUBRICS.md) (the verdict model) ·
+  [`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md) (why the bar goes up front)
 - A worked example of reading a verdict *wrongly* —
-  [`CASE-STUDY-Qwen-Triage.md`](CASE-STUDY-Qwen-Triage.md)
+  [`03-CASE-STUDY-Qwen-Triage.md`](03-CASE-STUDY-Qwen-Triage.md)
 
 *Written against the smevals source as of 2026-08-06, and checked by running its example
 haiku suite (two models, six runs, static build). If something here has gone stale or

@@ -10,7 +10,7 @@ you which models are good enough at **the work you actually do**, and what they'
 You bring 10–30 real prompts from your own recent work; Instar runs them through your
 usual model and a few cheaper ones, then has independent judges compare the answers.
 
-If you *do* have an application with captured AI traffic, [`RUNBOOK.md`](RUNBOOK.md) §5 is
+If you *do* have an application with captured AI traffic, [`04-RUNBOOK.md`](04-RUNBOOK.md) §5 is
 the better path. This guide is for prompts a person writes, not traffic a system emits.
 
 ---
@@ -50,7 +50,7 @@ export OPENROUTER_API_KEY=sk-or-...
 ```
 
 Any OpenAI-compatible endpoint works instead (a local Ollama or vLLM server, OpenAI
-directly). See [`PROVIDERS.md`](PROVIDERS.md).
+directly). See [`05-PROVIDERS.md`](05-PROVIDERS.md).
 
 ---
 
@@ -251,10 +251,10 @@ something you can act on. One judge on its own doesn't.
 | `HTTP 429` on some calls | The provider is rate-limited upstream. Rerun later, or lower `--repeats`. |
 | `HTTP 404` / model not found | The model id changed. Check openrouter.ai/models. |
 | A model is unavailable with `--extra-body` | No provider for that model meets the privacy preference. Pick another model or drop the preference, knowingly. |
-| `cost unknown` for an arm | The endpoint reported no cost and the model has no pricing row. Pass `--pricing` (see [`RUNBOOK.md`](RUNBOOK.md) §9). |
+| `cost unknown` for an arm | The endpoint reported no cost and the model has no pricing row. Pass `--pricing` (see [`04-RUNBOOK.md`](04-RUNBOOK.md) §9). |
 | A candidate's answers are much shorter | Check `max_tokens`. A low cap truncates long answers and the judge scores the truncation. |
 | `--corpus needs --tenant` | Add `--tenant <any-short-name>`. |
 
-See also: [`RUNBOOK.md`](RUNBOOK.md) §8b–8c (arms and the corpus in depth) ·
-[`PROVIDERS.md`](PROVIDERS.md) · [`GUIDE-Setting-the-Bar.md`](GUIDE-Setting-the-Bar.md)
+See also: [`04-RUNBOOK.md`](04-RUNBOOK.md) §8b–8c (arms and the corpus in depth) ·
+[`05-PROVIDERS.md`](05-PROVIDERS.md) · [`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md)
 (deciding what "good enough" means before you look at the numbers).

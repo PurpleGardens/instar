@@ -6,7 +6,7 @@
 > verdict did its job, and *then a human did theirs* by reading the rows behind
 > it. This is the judgment no tool can automate, shown on real numbers.
 >
-> If [`LESSON-Rubrics-Hands-On.md`](LESSON-Rubrics-Hands-On.md) taught you how a
+> If [`08-LESSON-Rubrics-Hands-On.md`](08-LESSON-Rubrics-Hands-On.md) taught you how a
 > verdict is produced, this teaches you when not to stop at it.
 
 ---
@@ -163,7 +163,7 @@ the 1.8x *would* show up in latency — measure the workload you actually have.
 ## Try it yourself
 
 Every number here is reproducible on modest hardware. See
-[`PROVIDERS.md`](PROVIDERS.md) for standing up the two Qwen models locally, then
+[`05-PROVIDERS.md`](05-PROVIDERS.md) for standing up the two Qwen models locally, then
 run the workload with `--rubric Engineering/fixtures/rubrics/support-triage-v1.json`.
 For the mechanics of the rubric itself, start with
-[`LESSON-Rubrics-Hands-On.md`](LESSON-Rubrics-Hands-On.md).
+[`08-LESSON-Rubrics-Hands-On.md`](08-LESSON-Rubrics-Hands-On.md).
