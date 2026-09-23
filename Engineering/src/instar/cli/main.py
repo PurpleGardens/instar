@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from instar.cli.corpus import add_corpus_parser
+from instar.cli.mcp import add_mcp_parser
 from instar.core.arms import Arm, rejudge, run_arms
 from instar.core.catalog import FeatureCatalog
 from instar.core.corpus import (
@@ -859,6 +860,7 @@ def build_parser() -> argparse.ArgumentParser:
     arms.set_defaults(func=_cmd_arms)
 
     add_corpus_parser(sub)
+    add_mcp_parser(sub)
 
     return p
 

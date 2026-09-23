@@ -78,6 +78,12 @@ All paths are relative to `Engineering/src/instar/`.
 | `rubrics/judges.py` | `MockJudge`, `LabelMatchJudge`, `LLMJudge`, `AutoJudge` | Deterministic, objective, model-based, and dispatching. |
 | `rubrics/criteria.py` | `CriteriaJudge`, `CriteriaSet`, `MockCriteriaBackend` | Absolute scoring: one answer against a per-feature checklist, fraction met, critical criteria gate to 0. |
 | `rubrics/human.py` | `HumanJudge`, `write_grading_sheet`, `load_grades` | A person as the judge: blind CSV export from a transcript, grades read back and scored through `rejudge`. |
+| `mcp/client.py` | `MCPClient`, `ServerSpec`, `load_servers` | A stdlib-only MCP client (stdio and streamable HTTP) implementing only what measurement needs: initialize, tools/list, tools/call, ping. |
+| `mcp/probe.py` | `probe`, `ServerProbe`, `ToolDef` | Sizes every tool definition a server exposes (estimated tokens, split description/schema) and flags missing annotations. |
+| `mcp/toolcalls.py` | `ToolCall`, `load_calls`, `run_toolcalls`, `call_permitted` | Replays recorded tool calls at servers with no model: latency, tool vs transport errors, response size, `expect` checks. Refuses tools not marked read-only unless allowed. |
+| `mcp/demo_server.py` | `TOOLS`, `make_http_server` | A synthetic MCP server (stdio or HTTP) for trying `instar mcp` and for tests. |
+| `reporters/mcp.py` | `report_probe`, `report_toolcalls` | Writes MCP runs to `<runs-dir>/<label>/`. |
+| `cli/mcp.py` | `add_mcp_parser` | `instar mcp probe` and `instar mcp run`. |
 | `reporters/markdown.py` | `report_route`, `report_sweep`, `report_gateway` | Writes `<runs-dir>/<label>/`. Every report carries its own caveats on its face. |
 | `cli/main.py` | `build_parser`, `main`, `_cmd_route`, `_cmd_gateway` | `instar route` and `instar gateway`. Mock is the default; `--live` opts in. |
 

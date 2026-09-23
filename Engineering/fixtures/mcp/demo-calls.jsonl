@@ -1,0 +1,6 @@
+{"id": "order-shipped", "tool": "lookup_order", "arguments": {"order_id": "A-100"}, "expect": {"is_error": false, "contains": ["shipped"], "structured": {"status": "shipped"}, "max_tokens": 100}}
+{"id": "order-processing", "tool": "lookup_order", "arguments": {"order_id": "A-101"}, "expect": {"is_error": false, "structured": {"status": "processing"}}}
+{"id": "order-unknown", "tool": "lookup_order", "arguments": {"order_id": "Z-999"}, "expect": {"is_error": true}}
+{"id": "docs-returns", "tool": "search_docs", "arguments": {"query": "return window"}, "expect": {"contains": ["30 days"], "max_tokens": 400}}
+{"id": "docs-one", "tool": "search_docs", "arguments": {"query": "refund timing", "limit": 1}, "expect": {"contains": ["5 business days"], "max_tokens": 400}}
+{"id": "refund-attempt", "tool": "refund_order", "arguments": {"order_id": "A-102"}}

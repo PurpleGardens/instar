@@ -1,0 +1,8 @@
+{
+  "_note": "The demo server ships with Instar and needs nothing installed. '{python}' is replaced with the interpreter running Instar. Replace these entries with your own servers; headers_env maps an HTTP header to the environment variable holding its value.",
+  "servers": {
+    "demo": {
+      "command": ["{python}", "-m", "instar.mcp.demo_server"]
+    }
+  }
+}
