@@ -107,6 +107,35 @@ Good sources of calls: an agent's own transcripts, a gateway's audit log, or the
 questions your team actually asks. Include a few that *should* fail (an unknown
 id) and check for `is_error: true`.
 
+### From an Obot audit log
+
+If your MCP traffic goes through an [Obot](https://github.com/obot-platform/obot)
+gateway, its audit log already holds the calls. Export it as JSONL (Obot's
+normalised event format) and convert it:
+
+```bash
+instar mcp from-obot audit-export.jsonl -o calls.jsonl \
+    --server-map "GitHub=github-direct" --expect-observed
+```
+
+- Gateway calls (`mcp_call`, `tools/call`) and Obot Sentry's reports of MCP
+  tool calls from local agents (Claude Code, Codex, Cursor, VS Code) are kept.
+  Everything else (initialize, tools/list, local shell tools) is skipped and
+  counted. When a webhook rewrote a request, the rewritten version is used,
+  because that's what the server received.
+- Calls whose payload the export withheld (`payloadRedacted`) can't be
+  replayed; export with payload access if you need them.
+- `--server-map OBOT_NAME=INSTAR_NAME` pins calls for an Obot server to one of
+  your configured servers. Unmapped calls run against every configured server.
+- `--expect-observed` adds `expect.is_error` from what the log shows happened,
+  so the replay checks that the server still behaves the same.
+- Identical calls are merged (`meta.seen` counts them; `--no-dedupe` keeps
+  all). `meta` also keeps the Obot event id, time, client and the duration
+  Obot observed, which you can set beside the latency Instar measures.
+
+**The output holds real arguments from real users.** Redact before sharing, and
+keep it out of any public repository.
+
 ## 4. Run
 
 ```bash

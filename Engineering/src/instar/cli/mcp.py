@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 from instar.mcp.client import load_servers
+from instar.mcp.obot import convert, read_export, write_calls
 from instar.mcp.probe import probe
 from instar.mcp.toolcalls import OK, REFUSED, TOOL_ERROR, load_calls, run_toolcalls
 from instar.reporters import DEFAULT_RUNS_DIR
@@ -78,6 +79,48 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 1 if (broken and not args.dry_run) else 0
 
 
+def _cmd_from_obot(args: argparse.Namespace) -> int:
+    server_map: dict[str, str] = {}
+    for pair in args.server_map or []:
+        obot_name, sep, instar_name = pair.partition("=")
+        if not sep or not obot_name or not instar_name:
+            raise SystemExit(f"instar: --server-map takes OBOT_NAME=INSTAR_NAME, got {pair!r}")
+        server_map[obot_name] = instar_name
+    try:
+        events = read_export(args.export)
+        result = convert(
+            events,
+            server_map=server_map,
+            expect_observed=args.expect_observed,
+            dedupe=not args.no_dedupe,
+            tools=set(args.tool) if args.tool else None,
+        )
+        if not result.calls:
+            raise SystemExit(
+                f"instar: no replayable tool calls in {args.export} ({result.read} events read)"
+            )
+        write_calls(result.calls, args.out, overwrite=args.force)
+    except FileExistsError as e:
+        raise SystemExit(f"instar: {e} (pass --force to replace it)") from e
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"instar: {e}") from e
+    print(f"mcp from-obot -> {args.out}")
+    print(f"  {result.read} events read, {len(result.calls)} calls written", end="")
+    print(f", {result.merged} duplicates merged" if result.merged else "")
+    for reason, n in result.skipped.most_common():
+        print(f"  skipped {n}: {reason}")
+    unmapped = sorted(
+        {c["meta"]["obot_server"] for c in result.calls if "server" not in c} - {None}
+    )
+    if unmapped:
+        print(
+            f"  unmapped Obot server(s) {unmapped}: those calls run against every "
+            "configured server (map them with --server-map OBOT=INSTAR)"
+        )
+    print("  this file holds real arguments from real users; redact before sharing")
+    return 0
+
+
 def _common(p: argparse.ArgumentParser, label: str) -> None:
     p.add_argument("--servers", required=True, metavar="JSON", help="server config file")
     p.add_argument("--server", action="append", help="only this server (repeatable); default: all")
@@ -124,3 +167,27 @@ def add_mcp_parser(sub: Any) -> None:
         help="append every raw tool result to this file, for replay without the server",
     )
     run.set_defaults(func=_cmd_run)
+
+    ob = msub.add_parser(
+        "from-obot",
+        help="turn an Obot audit-log export (JSONL) into a tool-call fixture for `mcp run`",
+    )
+    ob.add_argument("export", help="Obot audit-log export (JSONL, normalised event format)")
+    ob.add_argument("-o", "--out", default="obot-calls.jsonl", help="fixture to write")
+    ob.add_argument(
+        "--server-map",
+        action="append",
+        metavar="OBOT=INSTAR",
+        help="send calls for an Obot server to the Instar server of this name (repeatable)",
+    )
+    ob.add_argument(
+        "--expect-observed",
+        action="store_true",
+        help="add expect.is_error from what the export shows happened",
+    )
+    ob.add_argument("--tool", action="append", help="keep only this tool (repeatable)")
+    ob.add_argument(
+        "--no-dedupe", action="store_true", help="keep every call, including exact repeats"
+    )
+    ob.add_argument("--force", action="store_true", help="replace an existing output file")
+    ob.set_defaults(func=_cmd_from_obot)
