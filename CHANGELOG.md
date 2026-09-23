@@ -72,6 +72,7 @@ Instar is in **v0.x** — the API surface is unstable until v1.0.0. Breaking cha
 
 ### Changed
 
+- **The PyPI distribution is now named `instar-harness`** in `pyproject.toml` (it was still `instar`, which PyPI disallows; `instar-harness` has been reserved since 2026-07-23). `pip install instar-harness`; the import package and the CLI are unchanged (`import instar`, `instar ...`). Install hints in docs and the Anthropic backend's missing-SDK error updated to match.
 - `result.json`'s `judge` object carries two more fields, `absolute` and `version`.
 - `README.md` rewritten from mission stub to v0.1 shape: two-audience "Who it's for," status callout, install-from-source (PyPI deferred to v0.2), anti-scope, and pointers to `Planning/`. Subsequently corrected to document the CLI that actually exists (`instar route` / `instar gateway` over JSONL workloads) in place of an illustrative YAML interface that was never built.
 - The feature-to-category map is now **user-supplied configuration** (`FeatureCatalog`, loaded from JSON) rather than a table baked into the source. An adopter measuring their own marketing or support workload declares their own features; the shipped catalogs are examples. Uncatalogued features default to foreground, so an omission costs money rather than quality, and the CLI names them on stderr.

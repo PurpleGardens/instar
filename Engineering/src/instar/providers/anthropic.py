@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Anthropic backend.
 
-Requires the optional ``anthropic`` SDK: ``pip install 'instar[anthropic]'``.
+Requires the optional ``anthropic`` SDK: ``pip install 'instar-harness[anthropic]'``.
 The import is lazy, so the stdlib-only mock path never pays for it.
 
 Credentials resolve from the environment the way the SDK expects
@@ -46,7 +46,7 @@ class AnthropicBackend(Backend):
             except ModuleNotFoundError as e:  # a traceback here helps nobody
                 raise ModuleNotFoundError(
                     "the Anthropic backend needs the 'anthropic' SDK, which is an "
-                    "optional extra. Install it with:  pip install 'instar[anthropic]'"
+                    "optional extra. Install it with:  pip install 'instar-harness[anthropic]'"
                 ) from e
             self._client = anthropic.Anthropic()
         return self._client
