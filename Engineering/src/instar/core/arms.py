@@ -88,6 +88,10 @@ class ArmStats:
     # for a well-behaved single-model arm; non-empty is a finding, not noise.
     served_models: list[str] = field(default_factory=list)
     is_control: bool = False
+    # For agent arms (a model using MCP tools), per-task averages over the
+    # successful calls: turns, tool calls, tool errors, refusals, and the
+    # tokens tool results added to context. None for ordinary completions.
+    tool_use: dict[str, float] | None = None
 
     @property
     def cost_per_1k_calls_usd(self) -> float:
@@ -176,7 +180,29 @@ def summarize_arm(
         output_tokens=sum(r.output_tokens for r in ok),
         served_models=served,
         is_control=arm.is_control,
+        tool_use=_tool_use(ok),
     )
+
+
+def _tool_use(results: list[CompletionResult]) -> dict[str, float] | None:
+    """Per-task averages of the trajectories agent runs carry, if any do."""
+    trajs = [r.trajectory for r in results if r.trajectory is not None]
+    if not trajs:
+        return None
+    n = len(trajs)
+
+    def mean(key: str) -> float:
+        return sum(float(t.get(key, 0) or 0) for t in trajs) / n
+
+    return {
+        "tasks": float(n),
+        "turns": mean("n_turns"),
+        "tool_calls": mean("tool_calls"),
+        "tool_errors": mean("tool_errors"),
+        "refused": mean("refused"),
+        "tool_result_tokens": mean("tool_result_tokens"),
+        "hit_max_turns": sum(1 for t in trajs if t.get("stop") == "max_turns") / n,
+    }
 
 
 def judge_calls(

@@ -52,6 +52,8 @@ from instar.core.gateway import run_gateway
 from instar.core.route import run_route, run_sweep
 from instar.core.traffic import TrafficSample, load_traffic
 from instar.core.transcript import Transcript
+from instar.mcp.agent import MCPAgentBackend, MCPToolbox, ToolCassette
+from instar.mcp.client import MCPError, load_servers
 from instar.policies import POLICY_NAMES, ClassifierPolicy, build_policy
 from instar.providers.anthropic import AnthropicBackend
 from instar.providers.base import Backend
@@ -434,15 +436,34 @@ def _cmd_arms(args: argparse.Namespace) -> int:
                 else LLMJudge(judge_backend, args.judge_model, family=args.judge_family)
             )
 
-    result = run_arms(
-        samples,
-        arms=arms,
-        repeats=args.repeats,
-        pricing=pricing,
-        baseline=args.baseline,
-        judge=judge,
-        capture=bool(args.save_transcript) or ctx is not None,
-    )
+    toolbox = _mcp_toolbox(args) if args.mcp_servers else None
+    if toolbox is not None:
+        arms = [
+            Arm(a.name, MCPAgentBackend(a.backend, toolbox, max_turns=args.max_turns), a.model,
+                is_control=a.is_control)
+            for a in arms
+        ]  # fmt: skip
+    try:
+        result = run_arms(
+            samples,
+            arms=arms,
+            repeats=args.repeats,
+            pricing=pricing,
+            baseline=args.baseline,
+            judge=judge,
+            capture=bool(args.save_transcript) or ctx is not None,
+        )
+    finally:
+        if toolbox is not None:
+            toolbox.close()
+    if toolbox is not None:
+        for server, why in toolbox.unreachable.items():
+            result.warnings.append(f"MCP server {server} unreachable, its tools not offered: {why}")
+        if args.tool_cassette:
+            result.warnings.append(
+                f"tool results replayed from {args.tool_cassette} where recorded"
+                + ("; unrecorded calls returned an error" if args.cassette_only else "")
+            )
     if args.save_transcript and result.transcript is not None:
         saved = result.transcript.save(args.save_transcript)
         print(f"transcript -> {saved}")
@@ -548,6 +569,25 @@ def _cmd_rejudge(args: argparse.Namespace) -> int:
         q = "unscored" if s.quality_mean is None else f"{s.quality_mean:.3f} (n={s.quality_n})"
         print(f"  {s.name:<16} quality {q}")
     return 0
+
+
+def _mcp_toolbox(args: argparse.Namespace) -> MCPToolbox:
+    """Connect to the --mcp-servers for an agent run; one toolbox for every arm."""
+    try:
+        servers = load_servers(args.mcp_servers)
+        cassette = ToolCassette.load(args.tool_cassette) if args.tool_cassette else None
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"instar: {e}") from e
+    if args.cassette_only and cassette is None:
+        raise SystemExit("instar: --cassette-only needs --tool-cassette")
+    toolbox = MCPToolbox(
+        servers, cassette=cassette, cassette_only=args.cassette_only, record=args.record_tools
+    )
+    try:
+        toolbox.open()
+    except MCPError as e:
+        raise SystemExit(f"instar: {e}") from e
+    return toolbox
 
 
 def _criteria_judge(args: argparse.Namespace, *, mock: bool) -> CriteriaJudge:
@@ -737,6 +777,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--judge",
         action="store_true",
         help="score every non-baseline arm's output against the baseline's",
+    )
+    arms.add_argument(
+        "--mcp-servers",
+        metavar="JSON",
+        help="give every arm the tools of these MCP servers and run each task as an "
+        "agent loop (see Engineering/Docs/GUIDE-MCP-Measurement.md)",
+    )
+    arms.add_argument(
+        "--max-turns", type=int, default=8, help="agent loop: model turns per task, at most"
+    )
+    arms.add_argument(
+        "--tool-cassette",
+        metavar="JSONL",
+        help="agent loop: replay recorded tool results (from `mcp run --record` or "
+        "--record-tools) so every arm reads the same tool output",
+    )
+    arms.add_argument(
+        "--cassette-only",
+        action="store_true",
+        help="agent loop: never call a tool live; an unrecorded call returns an error",
+    )
+    arms.add_argument(
+        "--record-tools",
+        metavar="JSONL",
+        help="agent loop: append every live tool result to this file (a cassette)",
     )
     arms.add_argument(
         "--criteria",

@@ -64,6 +64,7 @@ class TranscriptEntry:
                     "ok": c.ok,
                     "error": c.error,
                     "cost_usd": c.cost_usd,
+                    **({"trajectory": c.trajectory} if c.trajectory is not None else {}),
                 }
                 for name, c in self.completions.items()
             },
@@ -83,6 +84,7 @@ class TranscriptEntry:
                     ok=c.get("ok", True),
                     error=c.get("error"),
                     cost_usd=c.get("cost_usd"),
+                    trajectory=c.get("trajectory"),
                 )
                 for name, c in d["completions"].items()
             },

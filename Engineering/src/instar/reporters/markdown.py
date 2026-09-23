@@ -334,6 +334,27 @@ def report_arms(
                 f"| {s.name} | {s.quality_mean:.3f} | {s.quality_n} | "
                 f"{n_pass} | {n_marg} | {n_fail} |"
             )
+    agent_arms = [a for a in result.arms if a.tool_use]
+    if agent_arms:
+        lines += [
+            "",
+            "## Tool use (MCP)",
+            "",
+            "Per task, averaged over successful calls. Tokens and cost above are "
+            "summed over every turn of each task.",
+            "",
+            "| arm | tasks | turns | tool calls | tool errors | refused | "
+            "tool-result tokens | hit turn cap |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+        for a in agent_arms:
+            u = a.tool_use or {}
+            lines.append(
+                f"| {a.name} | {u.get('tasks', 0):.0f} | {u.get('turns', 0):.2f} | "
+                f"{u.get('tool_calls', 0):.2f} | {u.get('tool_errors', 0):.2f} | "
+                f"{u.get('refused', 0):.2f} | {u.get('tool_result_tokens', 0):.0f} | "
+                f"{100 * u.get('hit_max_turns', 0):.0f}% |"
+            )
     lines += [
         "",
         "_`unscored` is not a pass. An LLM judge is itself a model whose "
