@@ -81,6 +81,8 @@ All paths are relative to `Engineering/src/instar/`.
 | `mcp/client.py` | `MCPClient`, `ServerSpec`, `load_servers` | A stdlib-only MCP client (stdio and streamable HTTP) implementing only what measurement needs: initialize, tools/list, tools/call, ping. |
 | `mcp/probe.py` | `probe`, `ServerProbe`, `ToolDef` | Sizes every tool definition a server exposes (estimated tokens, split description/schema) and flags missing annotations. |
 | `mcp/toolcalls.py` | `ToolCall`, `load_calls`, `run_toolcalls`, `call_permitted` | Replays recorded tool calls at servers with no model: latency, tool vs transport errors, response size, `expect` checks. Refuses tools not marked read-only unless allowed. |
+| `mcp/obot.py` | `convert`, `read_export`, `write_calls` | Turns an Obot audit-log export (normalised `AuditLogEvent` JSONL) into a tool-call fixture: gateway calls and Obot Sentry MCP-tool reports; webhook-rewritten requests preferred; redacted payloads skipped and counted. |
+| `mcp/agent.py` | `MCPAgentBackend`, `MCPToolbox`, `ToolCassette` | Phase 2: wraps any backend with `chat()` in a tool-use loop over MCP servers and returns an ordinary `CompletionResult` carrying a `trajectory`, so arms, judges, rejudge and the corpus work unchanged. Same read-only gate; cassettes hold tool output fixed across arms. |
 | `mcp/demo_server.py` | `TOOLS`, `make_http_server` | A synthetic MCP server (stdio or HTTP) for trying `instar mcp` and for tests. |
 | `reporters/mcp.py` | `report_probe`, `report_toolcalls` | Writes MCP runs to `<runs-dir>/<label>/`. |
 | `cli/mcp.py` | `add_mcp_parser` | `instar mcp probe` and `instar mcp run`. |

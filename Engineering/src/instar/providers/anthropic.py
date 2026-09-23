@@ -14,7 +14,13 @@ import time
 from typing import Any
 
 from instar.core.traffic import TrafficSample
-from instar.providers.base import Backend, CompletionResult
+from instar.providers.base import (
+    Backend,
+    ChatRequest,
+    ChatTurn,
+    CompletionResult,
+    ToolCallRequest,
+)
 
 
 class AnthropicBackend(Backend):
@@ -78,3 +84,90 @@ class AnthropicBackend(Backend):
             latency_s=dt,
             ok=True,
         )
+
+    def chat(self, request: ChatRequest) -> ChatTurn:
+        """One turn of a manual tool-use loop.
+
+        Tools go out as ``{name, description, input_schema}``. A previous
+        assistant turn is sent back as the raw content blocks it arrived as, so
+        anything the model returned besides text and tool calls (thinking
+        blocks) round-trips unchanged. Tool results go back as ``tool_result``
+        blocks, all results for a turn in one user message, with ``is_error``
+        set for a failed or refused call.
+
+        No refusal fallback is requested: a fallback serves the turn from a
+        different model, which would silently change what is being measured.
+        """
+        client = self._get_client()
+        kwargs: dict[str, Any] = {
+            "model": request.model,
+            "max_tokens": request.max_tokens,
+            "messages": [_to_anthropic(m) for m in request.messages],
+        }
+        if request.tools:
+            kwargs["tools"] = [
+                {"name": t.name, "description": t.description, "input_schema": t.input_schema}
+                for t in request.tools
+            ]
+        if request.system:
+            kwargs["system"] = request.system
+        if request.temperature is not None:
+            kwargs["temperature"] = request.temperature
+
+        t0 = time.perf_counter()
+        try:
+            resp = client.messages.create(**kwargs)
+        except Exception as e:  # keep the run alive; flag this turn as failed
+            return ChatTurn.failure(
+                request.model, f"{type(e).__name__}: {e}", time.perf_counter() - t0
+            )
+        dt = time.perf_counter() - t0
+
+        blocks = list(resp.content)
+        text = "".join(getattr(b, "text", "") for b in blocks if getattr(b, "type", None) == "text")
+        calls = [
+            ToolCallRequest(
+                id=str(b.id), name=str(b.name), arguments=dict(getattr(b, "input", None) or {})
+            )
+            for b in blocks
+            if getattr(b, "type", None) == "tool_use"
+        ]
+        usage = resp.usage
+        return ChatTurn(
+            text=text,
+            tool_calls=calls,
+            model=str(getattr(resp, "model", None) or request.model),
+            input_tokens=int(getattr(usage, "input_tokens", 0)),
+            output_tokens=int(getattr(usage, "output_tokens", 0)),
+            latency_s=dt,
+            stop_reason=str(getattr(resp, "stop_reason", None) or "unknown"),
+            raw=blocks,
+        )
+
+
+def _to_anthropic(m: dict[str, Any]) -> dict[str, Any]:
+    """Instar's conversation form to a Messages API message."""
+    role = m.get("role")
+    if role == "assistant":
+        if m.get("raw") is not None:
+            return {"role": "assistant", "content": m["raw"]}
+        content: list[dict[str, Any]] = []
+        if m.get("text"):
+            content.append({"type": "text", "text": m["text"]})
+        for c in m.get("tool_calls", []):
+            content.append({"type": "tool_use", "id": c.id, "name": c.name, "input": c.arguments})
+        return {"role": "assistant", "content": content}
+    if role == "tool_results":
+        return {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": r["id"],
+                    "content": r["content"],
+                    "is_error": bool(r.get("is_error", False)),
+                }
+                for r in m["results"]
+            ],
+        }
+    return {"role": str(role), "content": m.get("content", "")}

@@ -16,7 +16,8 @@ failure loudly and excludes it from the aggregates.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from instar.core.traffic import TrafficSample
 
@@ -44,6 +45,10 @@ class CompletionResult:
     # move weekly. None means "unknown", never "free" — see
     # :func:`instar.core.arms.resolve_arm_cost`.
     cost_usd: float | None = None
+    # For an agent run (a model calling tools over several turns), what
+    # happened on the way to ``text``: per-turn tokens and latency, every tool
+    # call and its outcome. None for an ordinary single completion.
+    trajectory: dict[str, Any] | None = None
 
     @classmethod
     def failure(cls, model: str, error: str, latency_s: float = 0.0) -> CompletionResult:
@@ -78,6 +83,72 @@ def sample_text(sample: TrafficSample) -> str:
     return "\n".join(parts)
 
 
+@dataclass(frozen=True)
+class ToolSpec:
+    """A tool offered to the model: what the model is told, nothing more."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ToolCallRequest:
+    """A tool call the model asked for."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ChatRequest:
+    """One model turn in a tool-using conversation, provider-neutral.
+
+    ``messages`` is Instar's own conversation form, which each backend
+    translates to its dialect:
+
+    - ``{"role": "user", "content": ...}``: as in a :class:`TrafficSample`;
+    - ``{"role": "assistant", "text": str, "tool_calls": [ToolCallRequest],
+      "raw": ...}``: a previous :class:`ChatTurn`. ``raw`` is the provider's
+      own form of that turn; a backend sends it back unchanged when it can,
+      so provider-specific content (such as thinking blocks) round-trips;
+    - ``{"role": "tool_results", "results": [{"id", "content", "is_error"}]}``.
+
+    ``meta`` is the sample's meta, for backends (the mock) that script
+    behaviour from it.
+    """
+
+    model: str
+    messages: list[dict[str, Any]]
+    tools: list[ToolSpec]
+    max_tokens: int
+    system: str | None = None
+    temperature: float | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ChatTurn:
+    """What the model did in one turn: text, tool calls, and what it cost."""
+
+    text: str
+    tool_calls: list[ToolCallRequest]
+    model: str
+    input_tokens: int
+    output_tokens: int
+    latency_s: float
+    stop_reason: str
+    ok: bool = True
+    error: str | None = None
+    cost_usd: float | None = None
+    raw: Any = None
+
+    @classmethod
+    def failure(cls, model: str, error: str, latency_s: float = 0.0) -> ChatTurn:
+        return cls("", [], model, 0, 0, latency_s, "error", ok=False, error=error)
+
+
 class Backend(ABC):
     """Something that can produce a completion for a sample."""
 
@@ -87,3 +158,9 @@ class Backend(ABC):
     def complete(self, sample: TrafficSample, model: str) -> CompletionResult:
         """Run ``sample`` against ``model``. Never raises for a provider error —
         returns :meth:`CompletionResult.failure` instead."""
+
+    def chat(self, request: ChatRequest) -> ChatTurn:
+        """One tool-capable model turn. Optional: backends that implement it
+        can drive an agent loop (:mod:`instar.mcp.agent`). Never raises for a
+        provider error — returns :meth:`ChatTurn.failure` instead."""
+        raise NotImplementedError(f"backend {self.name!r} does not support tool use")

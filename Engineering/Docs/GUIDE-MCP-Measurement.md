@@ -11,8 +11,9 @@
 **For:** anyone whose agents use MCP servers they didn't write, or wrote and
 never measured. No model and no API key are needed for anything in this guide.
 
-This is phase 1 of MCP measurement: the server on its own. Measuring a model
-*using* the server (task success, turns, total cost) is phase 2.
+Phase 1 (probe, run) measures the server on its own, with no model. Phase 2
+(`instar arms --mcp-servers`) measures a model using it: turns, tool calls,
+total cost per task, and whether the answer was right.
 
 ---
 
@@ -107,6 +108,35 @@ Good sources of calls: an agent's own transcripts, a gateway's audit log, or the
 questions your team actually asks. Include a few that *should* fail (an unknown
 id) and check for `is_error: true`.
 
+### From an Obot audit log
+
+If your MCP traffic goes through an [Obot](https://github.com/obot-platform/obot)
+gateway, its audit log already holds the calls. Export it as JSONL (Obot's
+normalised event format) and convert it:
+
+```bash
+instar mcp from-obot audit-export.jsonl -o calls.jsonl \
+    --server-map "GitHub=github-direct" --expect-observed
+```
+
+- Gateway calls (`mcp_call`, `tools/call`) and Obot Sentry's reports of MCP
+  tool calls from local agents (Claude Code, Codex, Cursor, VS Code) are kept.
+  Everything else (initialize, tools/list, local shell tools) is skipped and
+  counted. When a webhook rewrote a request, the rewritten version is used,
+  because that's what the server received.
+- Calls whose payload the export withheld (`payloadRedacted`) can't be
+  replayed; export with payload access if you need them.
+- `--server-map OBOT_NAME=INSTAR_NAME` pins calls for an Obot server to one of
+  your configured servers. Unmapped calls run against every configured server.
+- `--expect-observed` adds `expect.is_error` from what the log shows happened,
+  so the replay checks that the server still behaves the same.
+- Identical calls are merged (`meta.seen` counts them; `--no-dedupe` keeps
+  all). `meta` also keeps the Obot event id, time, client and the duration
+  Obot observed, which you can set beside the latency Instar measures.
+
+**The output holds real arguments from real users.** Redact before sharing, and
+keep it out of any public repository.
+
 ## 4. Run
 
 ```bash
@@ -147,10 +177,74 @@ their tools at all, so expect `probe` to flag them and plan to allow-list read
 tools by hand **after reading what they do**. Prefer pointing measurements at a
 test account or a read-only credential either way.
 
+## Phase 2: a model using the servers
+
+Phase 1 measures the server on its own. What a company pays for is a model
+*using* it: how many turns and tool calls a task takes, what that costs, and
+whether the answer is right. Add `--mcp-servers` to an ordinary `instar arms`
+run and every arm becomes an agent loop over those servers' tools:
+
+```bash
+instar arms --traffic tasks.jsonl --mcp-servers servers.json \
+    --criteria criteria.json --control --live \
+    --arm "name=opus,url=...,model=..." --arm "name=haiku,url=...,model=..." \
+    --record-tools tape.jsonl --save-transcript transcript.json
+```
+
+- **Tasks** are an ordinary workload file: a system prompt and the user's
+  question. The model is offered every tool from every configured server (with
+  several servers, tools are named `<server>__<tool>`) and runs until it answers
+  without calling a tool, a turn fails, or `--max-turns` (default 8).
+- **Cost and tokens are summed over every turn.** Each turn re-sends the whole
+  conversation, including every tool definition and tool result, and is billed
+  for it; that's the real cost of the task.
+- **Judging** works as for any run and scores the final answer. The criteria
+  judge also sees a list of the tool calls made (names, arguments, outcome, not
+  the results), so a criterion can ask about process: *"Called lookup_order
+  before answering"*.
+- **The report** adds a *Tool use* table per arm: turns, tool calls, tool
+  errors, refusals, tool-result tokens per task, and how often the turn cap was
+  hit. Every call is kept in the transcript's per-answer `trajectory`.
+- **Safety** is the same gate: a tool that isn't read-only is offered (its
+  definition is part of the real cost) but never run unless allow-listed. The
+  model gets an error result saying the harness didn't run it.
+- Supported models: any backend with tool use. Today that's the Anthropic
+  backend and any OpenAI-compatible endpoint (chat-completions tool calling),
+  plus the mock.
+
+### Comparing models on the same tool output
+
+Live tools can return different data from one call to the next, so two models
+compared live aren't answering quite the same question. Record once, then
+replay:
+
+1. Record: `--record-tools tape.jsonl` on a live run, or `instar mcp run
+   --record tape.jsonl` over a tool-call fixture.
+2. Replay: `--tool-cassette tape.jsonl`. A call that matches a recording
+   exactly (server, tool, arguments) gets the recorded result; others are
+   called live. Add `--cassette-only` to return an error for unrecorded calls
+   instead, so nothing live is touched at all.
+
+Matching is exact, so a model that asks for the same thing with different
+arguments (another `limit`, a reworded query) misses the cassette. The
+trajectory counts `cassette_hits` so you can see how often that happened.
+
+### Try it with nothing installed
+
+```bash
+instar arms --traffic Engineering/fixtures/mcp/demo-agent-tasks.jsonl \
+    --mcp-servers Engineering/fixtures/mcp/demo-servers.json \
+    --criteria Engineering/fixtures/mcp/demo-agent-criteria.json --control
+```
+
+The mock model follows the `mock_tool_calls` scripted in each task's `meta`
+against the real demo server; the numbers measure nothing, but every part of
+the path runs.
+
 ## What this doesn't tell you (yet)
 
-- Whether a model *chooses* the right tool or arguments. That's phase 2 (an
-  agent loop over the same servers), which will also replay recorded results
-  so models can be compared on identical tool output.
+- Whether a tool choice was *right* beyond what your criteria ask. Write a
+  criterion for each process step that matters.
+- Resources and prompts (MCP's other two primitives); only tools are measured.
 - Exact token counts for a specific client and model.
 - Anything about write tools, beyond refusing to call them.

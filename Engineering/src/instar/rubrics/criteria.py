@@ -171,6 +171,26 @@ def criteria_score(criteria: Sequence[Criterion], met: Mapping[int, bool]) -> Ju
     return JudgeResult(score, "; ".join(parts))
 
 
+def _tools_used(answer: CompletionResult) -> str:
+    """For an agent answer, the tool calls it made, so criteria can ask about them.
+
+    Names, arguments and outcome only; not the results, which would swamp the
+    judge's context and aren't what a criterion about *process* needs.
+    """
+    traj = answer.trajectory
+    if not traj:
+        return ""
+    calls = [c for t in traj.get("turns", []) for c in t.get("tool_calls", [])]
+    if not calls:
+        return "TOOL CALLS MADE: none\n\n"
+    lines = [
+        f"- {c.get('tool') or c.get('name')}({json.dumps(c.get('arguments', {}))})"
+        f" -> {c.get('status')}"
+        for c in calls
+    ]
+    return "TOOL CALLS MADE:\n" + "\n".join(lines) + "\n\n"
+
+
 class CriteriaJudge(Judge):
     """An LLM checks one answer against the task's criteria, one YES/NO each.
 
@@ -228,7 +248,7 @@ class CriteriaJudge(Judge):
         listed = "\n".join(f"{i}. {c.text}" for i, c in enumerate(criteria, start=1))
         prompt = (
             f"TASK (feature={sample.feature}):\n{sample_text(sample).strip()}\n\n"
-            f"ANSWER:\n{weak.text}\n\nCRITERIA:\n{listed}\n\nVerdicts:"
+            f"{_tools_used(weak)}ANSWER:\n{weak.text}\n\nCRITERIA:\n{listed}\n\nVerdicts:"
         )
         probe = TrafficSample(
             id=f"criteria-{sample.id}",

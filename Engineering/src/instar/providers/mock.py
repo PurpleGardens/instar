@@ -13,9 +13,18 @@ Every report Instar writes says so on its face.
 from __future__ import annotations
 
 import hashlib
+import json
 
 from instar.core.traffic import TrafficSample
-from instar.providers.base import Backend, CompletionResult, estimate_tokens, sample_text
+from instar.providers.base import (
+    Backend,
+    ChatRequest,
+    ChatTurn,
+    CompletionResult,
+    ToolCallRequest,
+    estimate_tokens,
+    sample_text,
+)
 
 
 class MockBackend(Backend):
@@ -42,4 +51,35 @@ class MockBackend(Backend):
             output_tokens=out_tok,
             latency_s=self._latency,
             ok=True,
+        )
+
+    def chat(self, request: ChatRequest) -> ChatTurn:
+        """A scripted tool-using turn. Measures nothing.
+
+        On the first turn, calls the tools listed in the sample's
+        ``meta["mock_tool_calls"]`` (``[{"tool": name, "arguments": {...}}]``;
+        a plain tool name matches a server-prefixed one). Once results are in,
+        answers with a deterministic text that quotes the start of each result,
+        so a criteria judge has something to read.
+        """
+        results = [
+            r for m in request.messages if m.get("role") == "tool_results" for r in m["results"]
+        ]
+        in_tok = sum(estimate_tokens(json.dumps(m, default=str)) for m in request.messages)
+        in_tok += sum(estimate_tokens(json.dumps(t.input_schema)) for t in request.tools)
+        planned = request.meta.get("mock_tool_calls") or []
+        if planned and not results and request.tools:
+            names = [t.name for t in request.tools]
+            calls: list[ToolCallRequest] = []
+            for i, c in enumerate(planned):
+                want = str(c.get("tool"))
+                name = next((n for n in names if n == want or n.endswith("__" + want)), want)
+                calls.append(ToolCallRequest(f"call-{i + 1}", name, dict(c.get("arguments") or {})))
+            return ChatTurn(
+                "", calls, request.model, in_tok, 8 * len(calls), self._latency, "tool_use"
+            )
+        quoted = "; ".join(str(r["content"])[:60] for r in results)
+        text = f"[mock:{request.model}] answer from {len(results)} tool result(s): {quoted}"
+        return ChatTurn(
+            text, [], request.model, in_tok, estimate_tokens(text), self._latency, "end_turn"
         )
