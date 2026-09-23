@@ -56,6 +56,24 @@ class MockJudge(Judge):
         return JudgeResult(min(1.0, base + jitter), "mock judge (deterministic, not a measurement)")
 
 
+def normalize_labels(labels: Iterable[str]) -> list[str]:
+    """Lower-cased, de-duplicated, longest first.
+
+    Longest-first so a multi-word label wins over a substring collision (e.g.
+    "account_access" must not be shadowed by "access").
+    """
+    return sorted({label.lower() for label in labels}, key=len, reverse=True)
+
+
+def extract_label(text: str, labels: list[str]) -> str | None:
+    """The first of ``labels`` (as from :func:`normalize_labels`) found in ``text``."""
+    lowered = (text or "").lower()
+    for label in labels:
+        if label in lowered:
+            return label
+    return None
+
+
 class LabelMatchJudge(Judge):
     """Objective scorer for classification: did the weak model land the label?
 
@@ -77,16 +95,10 @@ class LabelMatchJudge(Judge):
     name = "label_match"
 
     def __init__(self, labels: Iterable[str]) -> None:
-        # Longest-first so a multi-word label wins over a substring collision
-        # (e.g. "account_access" must not be shadowed by "access").
-        self.labels = sorted({label.lower() for label in labels}, key=len, reverse=True)
+        self.labels = normalize_labels(labels)
 
     def _extract(self, text: str) -> str | None:
-        lowered = (text or "").lower()
-        for label in self.labels:
-            if label in lowered:
-                return label
-        return None
+        return extract_label(text, self.labels)
 
     def score(
         self, sample: TrafficSample, strong: CompletionResult, weak: CompletionResult

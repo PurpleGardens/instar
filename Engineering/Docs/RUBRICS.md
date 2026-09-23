@@ -112,6 +112,22 @@ The loader refuses, at load time rather than in a report:
 | `run.error_count` | failed calls |
 | `run.weak_share_pct` | percentage of traffic the policy moved |
 
+**For `instar arms` runs**, including ones already stored in a corpus, bind the
+`arm.*` metrics instead. Each is computed for one candidate arm:
+
+| Metric | Meaning |
+|---|---|
+| `arm.quality_mean` | the arm's mean judged quality |
+| `arm.quality_min` | its single worst judged answer |
+| `arm.quality_vs_control` | its quality divided by the same-model control's; unmeasured without a control |
+| `arm.cost_saved_pct` | cost per call saved vs the baseline arm; unmeasured if either cost is unknown |
+| `arm.p50_ms` / `arm.p95_ms` | latency percentiles |
+| `arm.ms_per_output_token` | latency normalized by output length |
+| `arm.error_count` | failed calls on this arm |
+
+`instar corpus rubric` applies such a rubric to history (`RUNBOOK.md` §8c). A
+routing metric asked of an arms run is `unmeasured`, never a pass.
+
 Three notes that matter more than they look:
 
 - **Prefer `quality.routed_weak_mean` over `quality.mean_all`.** Calls kept on

@@ -1,0 +1,49 @@
+{
+  "name": "arms-substitution-example-v1",
+  "description": "Illustrative rubric for an `instar arms` comparison: can a cheaper model replace the baseline? Binds only arm.* metrics, so it can be applied to stored runs with `instar corpus rubric`. These thresholds are an EXAMPLE of the format, not a recommendation; agree your own with whoever owns the outcome, before the run.",
+  "dimensions": [
+    {
+      "id": "quality_vs_control",
+      "label": "Quality relative to the same-model control",
+      "metric": "arm.quality_vs_control",
+      "direction": "higher_is_better",
+      "pass_at": 0.95,
+      "marginal_at": 0.85,
+      "rationale": "Read against the control, not as a raw score: the control's score is the judge's own error. Below 0.85 users would notice."
+    },
+    {
+      "id": "worst_answer",
+      "label": "No answer judged a failure",
+      "metric": "arm.quality_min",
+      "direction": "higher_is_better",
+      "pass_at": 0.5,
+      "rationale": "A healthy mean can hide one feature the cheaper model cannot do at all."
+    },
+    {
+      "id": "savings",
+      "label": "Cost saved vs the baseline arm",
+      "metric": "arm.cost_saved_pct",
+      "direction": "higher_is_better",
+      "pass_at": 50.0,
+      "marginal_at": 20.0,
+      "rationale": "Below 20% the switch isn't worth the operational cost of a second model."
+    },
+    {
+      "id": "latency",
+      "label": "p95 latency",
+      "metric": "arm.p95_ms",
+      "direction": "lower_is_better",
+      "pass_at": 15000.0,
+      "marginal_at": 30000.0,
+      "rationale": "Generous: most of these calls are background work. Tighten for anything a person watches."
+    },
+    {
+      "id": "run_integrity",
+      "label": "No failed calls",
+      "metric": "arm.error_count",
+      "direction": "lower_is_better",
+      "pass_at": 0.0,
+      "rationale": "Failed calls are excluded from every other number. Fix the run before reading the verdict."
+    }
+  ]
+}

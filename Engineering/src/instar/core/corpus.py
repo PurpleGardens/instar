@@ -71,6 +71,18 @@ ORIGINS = frozenset({ORIGIN_COVERAGE, ORIGIN_FAILURE_MINED, ORIGIN_PRODUCTION})
 # label, but a free one: it turns captured production calls into labelled rows.
 REACTIONS = frozenset({"accepted", "edited", "regenerated", "abandoned"})
 
+# What a workload is *for*, which decides how its numbers may be used. Every
+# decision taken on a fixed set of tasks spends some of its validity (Dwork et
+# al., 2015); a set used to choose between candidates stops measuring them
+# (Xia et al., RRSI, 2026). So a set is one of:
+#   evolve    - tuning happens here; its scores are optimistic by construction
+#   held_out  - checks what tuning produced; each look spends some of it
+#   standard  - the frozen yardstick; never tuned against
+SPLIT_EVOLVE = "evolve"
+SPLIT_HELD_OUT = "held_out"
+SPLIT_STANDARD = "standard"
+SPLIT_ROLES = frozenset({SPLIT_EVOLVE, SPLIT_HELD_OUT, SPLIT_STANDARD})
+
 ROLE_BASELINE = "baseline"
 ROLE_CONTROL = "control"
 ROLE_CANDIDATE = "candidate"
@@ -98,6 +110,8 @@ class RecordContext:
             Gold labels get corrected; scores against an old version are not
             scores against the new one.
         mock: True for hermetic runs, so they can never be mistaken for data.
+        split_role: what the workload is for; one of :data:`SPLIT_ROLES`, or
+            None when nobody said.
     """
 
     tenant_id: str
@@ -107,6 +121,7 @@ class RecordContext:
     rubric_version: str | None = None
     gold_version: str | None = None
     mock: bool = False
+    split_role: str | None = None
 
     def __post_init__(self) -> None:
         if not _TENANT_RE.match(self.tenant_id):
@@ -116,6 +131,8 @@ class RecordContext:
             )
         if self.origin not in ORIGINS:
             raise ValueError(f"origin {self.origin!r} must be one of {sorted(ORIGINS)}")
+        if self.split_role is not None and self.split_role not in SPLIT_ROLES:
+            raise ValueError(f"split_role {self.split_role!r} must be one of {sorted(SPLIT_ROLES)}")
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -126,6 +143,7 @@ class RecordContext:
             "rubric_version": self.rubric_version,
             "gold_version": self.gold_version,
             "mock": self.mock,
+            "split_role": self.split_role,
         }
 
     @classmethod
@@ -138,6 +156,7 @@ class RecordContext:
             rubric_version=d.get("rubric_version"),
             gold_version=d.get("gold_version"),
             mock=bool(d.get("mock", False)),
+            split_role=d.get("split_role"),
         )
 
 

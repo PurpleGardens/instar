@@ -5,8 +5,13 @@
 - ``instar corpus calls DIR``        the call records, filtered (JSONL out)
 - ``instar corpus calibration DIR``  each judge's control-arm score, run by run
 - ``instar corpus scores DIR``       every arm against its run's control
+- ``instar corpus looks DIR``        how often each workload has been measured
+- ``instar corpus rubric DIR --rubric FILE``  rubric archaeology: which
+  dimensions have ever decided a verdict, and the range each metric has taken
+- ``instar corpus labels DIR``       gold labels that independent models agree
+  are wrong (label-ceiling detector)
 
-All four take the same filters, leave mock runs out unless ``--include-mock``,
+All take the same filters, leave mock runs out unless ``--include-mock``,
 and show how old every row is. ``--json`` prints machine-readable output.
 Nothing here writes to the corpus.
 """
@@ -28,10 +33,14 @@ from instar.core.corpus_read import (
     dates_per_judge,
     iter_runs,
     judge_label,
+    label_ceiling,
+    looks,
+    rubric_archaeology,
     scores,
     select_calls,
     select_runs,
 )
+from instar.rubrics.spec import FAIL, MARGINAL, PASS, UNMEASURED, Rubric
 
 
 def _date(s: str) -> date:
@@ -213,6 +222,151 @@ def _cmd_scores(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_looks(args: argparse.Namespace) -> int:
+    now = datetime.now(UTC)
+    rows = looks(_load(args), _filter(args), now=now)
+    if args.json:
+        for r in rows:
+            print(json.dumps(r.to_json()))
+        return 0
+    if not rows:
+        print("no runs match")
+        return 0
+    table = [
+        [
+            r.tenant_id,
+            r.workload_id or "-",
+            r.gold_version or "-",
+            ",".join(r.split_roles),
+            str(r.arms_runs),
+            str(r.rejudge_runs),
+            r.first.strftime("%Y-%m-%d"),
+            r.last.strftime("%Y-%m-%d"),
+            str(r.age_days),
+        ]
+        for r in rows
+    ]
+    headers = [
+        "tenant", "workload", "gold", "split role", "arms runs", "rejudges",
+        "first", "last", "age d",
+    ]  # fmt: skip
+    print(_table(headers, table))
+    print(
+        "\nEvery arms run is a look at the tasks, and every decision taken on a set "
+        "spends some of it.\nA 'standard' workload is the yardstick: measure on it, "
+        "never tune against it."
+    )
+    unset = sum(1 for r in rows if "unset" in r.split_roles)
+    if unset:
+        print(f"{unset} workload(s) have runs with no --split-role recorded.")
+    return 0
+
+
+def _cmd_rubric(args: argparse.Namespace) -> int:
+    try:
+        rubric = Rubric.from_json(args.rubric)
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"instar: {e}") from e
+    rows, overall = rubric_archaeology(_load(args), _filter(args), rubric)
+    if args.json:
+        print(json.dumps({"rubric": rubric.name, "overall": overall}))
+        for h in rows:
+            print(json.dumps(h.to_json()))
+        return 0
+    if not rows:
+        print("no candidate arms match")
+        return 0
+    table = [
+        [
+            h.dimension,
+            h.metric,
+            h.judge,
+            str(h.n),
+            " ".join(f"{(h.counts or {}).get(v, 0)}" for v in (PASS, MARGINAL, FAIL, UNMEASURED)),
+            str(h.binding),
+            str(h.sole),
+            f"{_fmt(h.lo)}..{_fmt(h.hi)}",
+            f"{h.newest_days}-{h.oldest_days}",
+            "NEVER BINDING" if h.never_binding else "",
+        ]
+        for h in rows
+    ]
+    headers = [
+        "dimension", "metric", "judge", "arms", "pass/marg/fail/unmeas", "binding",
+        "sole", "range", "age d", "",
+    ]  # fmt: skip
+    print(f"rubric {rubric.name}: applied to stored arms, never re-run\n")
+    print(_table(headers, table))
+    tally = ", ".join(f"{v} {overall[v]}" for v in (PASS, MARGINAL, FAIL, UNMEASURED))
+    print(f"\noverall verdicts: {tally}")
+    print(
+        "binding = at the worst level of a non-pass verdict; sole = the verdict would "
+        "have been better had it passed.\nA dimension that is never binding has never "
+        "changed an outcome: a candidate for deletion (RUBRICS.md §8)."
+    )
+    dims = [d.id for d in rubric.dimensions]
+    never = [d for d in dims if all(h.never_binding for h in rows if h.dimension == d)]
+    if never:
+        print(f"never binding under any judge so far: {', '.join(never)}")
+    unmeasured = [
+        d
+        for d in dims
+        if all(h.counts and h.counts[UNMEASURED] == h.n for h in rows if h.dimension == d)
+    ]
+    if unmeasured:
+        print(
+            f"no value on any matching run: {', '.join(unmeasured)} (unjudged runs, "
+            "unknown cost, or a routing metric where an arm.* metric was meant)"
+        )
+    return 0
+
+
+def _cmd_labels(args: argparse.Namespace) -> int:
+    now = datetime.now(UTC)
+    labels = [x.strip() for x in args.labels.split(",") if x.strip()] if args.labels else None
+    report = label_ceiling(
+        _load(args), _filter(args), labels=labels, min_models=args.min_models, now=now
+    )
+    flags, examined = report.flags, report.examined
+    if args.json:
+        for f in flags:
+            print(json.dumps(f.to_json()))
+        return 0
+    if not examined:
+        print("no gold-labelled samples in matching arms runs")
+        return 0
+    if flags:
+        table = [
+            [
+                f.run_id,
+                str(f.age_days),
+                f.sample_id,
+                f.gold,
+                f.consensus,
+                f"{len(f.agreeing)}/{f.n_models}",
+                f"{f.consistency:.2f}",
+                ", ".join(f.agreeing),
+            ]
+            for f in flags
+        ]
+        headers = [
+            "run", "age d", "sample", "gold", "models say", "agree", "consistency",
+            "models",
+        ]  # fmt: skip
+        print(_table(headers, table))
+        print()
+    print(
+        f"{len(flags)} flag(s) across {examined} gold-labelled sample(s). A flag means "
+        f"{args.min_models}+ different models\ngave the same answer and the gold label "
+        "disagrees: check the label before blaming the models.\nconsistency = the "
+        "lowest share of repeats on which an agreeing model gave that answer."
+    )
+    print("\nagreement with gold (majority answer per sample; read after the flags):")
+    for model, (hit, n) in report.accuracy.items():
+        print(f"  {model:<32} {hit}/{n}")
+    return 0
+
+
 def _add_filters(p: argparse.ArgumentParser, *, role: bool = True) -> None:
     p.add_argument("corpus", help="corpus directory (the one given to --corpus when writing)")
     p.add_argument("--tenant", help="only this tenant's runs")
@@ -270,6 +424,30 @@ def add_corpus_parser(sub: Any) -> None:
     _add_filters(sc)
     sc.add_argument("--z", type=float, default=DEFAULT_Z, help="band width in standard errors")
     sc.set_defaults(func=_cmd_scores)
+
+    lk = csub.add_parser("looks", help="how many times each workload has been measured")
+    _add_filters(lk, role=False)
+    lk.set_defaults(func=_cmd_looks)
+
+    rb = csub.add_parser(
+        "rubric",
+        help="rubric archaeology: apply a rubric to every stored arm; which dimensions "
+        "ever decided a verdict",
+    )
+    _add_filters(rb, role=False)
+    rb.add_argument("--rubric", required=True, help="rubric JSON (use arm.* metrics)")
+    rb.set_defaults(func=_cmd_rubric)
+
+    lb = csub.add_parser(
+        "labels",
+        help="label-ceiling detector: gold labels that independent models agree are wrong",
+    )
+    _add_filters(lb, role=False)
+    lb.add_argument("--labels", help="comma-separated label set (default: the gold values)")
+    lb.add_argument(
+        "--min-models", type=int, default=2, help="distinct models that must agree (default 2)"
+    )
+    lb.set_defaults(func=_cmd_labels)
 
 
 if __name__ == "__main__":  # pragma: no cover

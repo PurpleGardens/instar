@@ -624,6 +624,38 @@ not independent evidence. A small workload therefore gets a wide band, and
 lowering `--z`. Never compare scores across judges: each row's judge is printed
 for that reason.
 
+#### Auditing the instrument: `looks`, `rubric`, `labels`
+
+```bash
+instar corpus looks ~/instar-corpus                                   # how often each set was measured
+instar corpus rubric ~/instar-corpus --rubric my-arms-rubric.json    # rubric archaeology
+instar corpus labels ~/instar-corpus --workload my-classifier         # label-ceiling detector
+```
+
+**`looks`** counts runs per workload and gold version. Every arms run is a look
+at the tasks, and every decision taken on a set spends some of it. Record what
+each set is for with `--split-role` on `instar arms`: `evolve` (you tune on it),
+`held_out` (it checks what tuning produced), or `standard` (the frozen yardstick,
+never tuned against).
+
+**`rubric`** applies a rubric to every candidate arm already in the corpus,
+without re-running anything, and reports per dimension (and per judge): the
+verdict counts, how often it was **binding** (at the worst level of a non-pass
+verdict), how often it was the **sole decider** (the verdict would have been
+better had it passed), and the range of values it has taken. A dimension that
+has never been binding under any judge has never changed an outcome, which makes
+it a deletion candidate (`RUBRICS.md` §8). Use the `arm.*` metrics (`RUBRICS.md` §3);
+`Engineering/fixtures/rubrics/arms-substitution-example-v1.json` is an example.
+
+**`labels`** reads the saved answers of arms runs whose samples carry
+`meta.gold`, takes each model's majority answer across repeats, and flags any
+sample where two or more **different** models (`--min-models`) give the same
+answer and the gold label disagrees. When independent models agree against
+the key, check the key before blaming the models. A control arm serves the
+baseline's model and does not count as a second opinion. Pass `--labels a,b,c`
+when some valid label never appears as gold. It also prints each model's
+agreement with gold; read that after the flags.
+
 ---
 
 ## 9. Supply your own pricing table
