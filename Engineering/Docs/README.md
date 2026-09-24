@@ -7,6 +7,7 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 
 | If you want to… | Read, in order |
 |---|---|
+| **Understand what Instar is and why it's worth doing** (manager, no code) | [`OVERVIEW-For-Managers.md`](OVERVIEW-For-Managers.md) |
 | **Decide whether a model is good enough** (you own the outcome, not the tool) | [`GUIDE-Setting-the-Bar.md`](GUIDE-Setting-the-Bar.md) |
 | **Learn rubrics by running something** (10 minutes, no spend) | [`LESSON-Rubrics-Hands-On.md`](LESSON-Rubrics-Hands-On.md) |
 | **Find out if a cheaper model is good enough for *your own* prompts** (no app needed, ~1 hour) | [`GUIDE-Measure-Your-Own-Prompts.md`](GUIDE-Measure-Your-Own-Prompts.md) |
@@ -22,6 +23,7 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 
 | Doc | It's a… | For | In one line |
 |---|---|---|---|
+| [`OVERVIEW-For-Managers.md`](OVERVIEW-For-Managers.md) | overview (explain) | manager, decision owner | What Instar does and why it's worth doing, in business terms: the four ideas, what the report tells you, MCP measurement, benefits and limits. No code. |
 | [`GUIDE-Setting-the-Bar.md`](GUIDE-Setting-the-Bar.md) | one-pager | decision owner | The bar is a business judgment, not a technical one. How to set it, in plain terms — no tool, no jargon. |
 | [`LESSON-Rubrics-Hands-On.md`](LESSON-Rubrics-Hands-On.md) | lesson (do it) | student | Run four commands, change one number, watch a verdict flip. Learn rubrics by feeling them move. |
 | [`GUIDE-Measure-Your-Own-Prompts.md`](GUIDE-Measure-Your-Own-Prompts.md) | task guide | individual | Bring 10–30 of your own prompts; compare your everyday model with cheaper ones under two judges and a control. One key, about an hour. |
@@ -44,7 +46,7 @@ a folder:
 
 | Mode | It answers | Genres here |
 |---|---|---|
-| **Explain** | *What is this?* | reference (`RUBRICS`, `CODE-OVERVIEW`) |
+| **Explain** | *What is this?* | reference (`RUBRICS`, `CODE-OVERVIEW`), overview (`OVERVIEW-For-Managers`) |
 | **Guide** | *How do I do it, step by step?* | tutorial + task guide (`GUIDE-*`, `RUNBOOK`, `PROVIDERS`) |
 | **Do** | *Let me try it and see what happens.* | lesson (`LESSON-*`) |
 | **Judge** | *How do I read a result wisely — and when do I distrust it?* | case study (`CASE-STUDY-*`) |
