@@ -782,7 +782,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mcp-servers",
         metavar="JSON",
         help="give every arm the tools of these MCP servers and run each task as an "
-        "agent loop (see Engineering/Docs/GUIDE-MCP-Measurement.md)",
+        "agent loop (see Engineering/Docs/12-GUIDE-MCP-Measurement.md)",
     )
     arms.add_argument(
         "--max-turns", type=int, default=8, help="agent loop: model turns per task, at most"
@@ -807,7 +807,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--criteria",
         metavar="JSON",
         help="score every arm, baseline included, against a criteria checklist "
-        "(absolute; implies --judge). See Engineering/Docs/GUIDE-Criteria-Judge.md",
+        "(absolute; implies --judge). See Engineering/Docs/11-GUIDE-Criteria-Judge.md",
     )
     arms.add_argument(
         "--blind-judge",

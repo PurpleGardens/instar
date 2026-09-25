@@ -6,7 +6,7 @@
 > the output you see will match the output printed in this lesson exactly. Nothing
 > you do here costs anything or touches a real model.
 >
-> If you have read [`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md), this
+> If you have read [`08-GUIDE-Creating-Rubrics.md`](08-GUIDE-Creating-Rubrics.md), this
 > makes it concrete. If you haven't, this is a fine place to start — the ideas
 > will land better after you've felt them move.
 
@@ -157,7 +157,7 @@ So which of the two runs was right — FAIL at 1.0, or PASS at 0.9?
 **Neither this lesson nor the tool can tell you.** That's a business judgment: is
 one ticket in twenty-four scoring badly acceptable for this workload, or not?
 Whoever owns support triage decides that — see
-[`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md) — and they decide it
+[`03-GUIDE-Setting-the-Bar.md`](03-GUIDE-Setting-the-Bar.md) — and they decide it
 *before* the run. If, having seen this result, they genuinely conclude 0.9 was
 always the right bar, the honest move is to save it as a **new version**
 (`support-triage-v2`) with a written reason, not to quietly edit v1 until it
@@ -218,11 +218,11 @@ rm my-rubric.json
 
 ## Where to go next
 
-- [`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md) — write a rubric for
+- [`08-GUIDE-Creating-Rubrics.md`](08-GUIDE-Creating-Rubrics.md) — write a rubric for
   your own workload, from scratch.
-- [`03-CASE-STUDY-Qwen-Triage.md`](03-CASE-STUDY-Qwen-Triage.md) — a real run where the
+- [`04-CASE-STUDY-Qwen-Triage.md`](04-CASE-STUDY-Qwen-Triage.md) — a real run where the
   verdict said FAIL and was *wrong to trust* — and how reading the rows revealed
   why. Everything here was mock; that was live, and it teaches the judgment this
   lesson can't.
-- [`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md) — for the person who
+- [`03-GUIDE-Setting-the-Bar.md`](03-GUIDE-Setting-the-Bar.md) — for the person who
   owns the number you kept changing in Step 3.

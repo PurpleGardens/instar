@@ -9,9 +9,9 @@
 > returns `unmeasured`, which is never a pass. A failing verdict exits `1`.
 >
 > **New to rubrics?** Learn by doing in
-> [`08-LESSON-Rubrics-Hands-On.md`](08-LESSON-Rubrics-Hands-On.md) (ten minutes, no
+> [`09-LESSON-Rubrics-Hands-On.md`](09-LESSON-Rubrics-Hands-On.md) (ten minutes, no
 > spend), or learn the method in
-> [`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md). This page is the
+> [`08-GUIDE-Creating-Rubrics.md`](08-GUIDE-Creating-Rubrics.md). This page is the
 > reference you keep open while writing one.
 
 ---
@@ -125,7 +125,7 @@ The loader refuses, at load time rather than in a report:
 | `arm.ms_per_output_token` | latency normalized by output length |
 | `arm.error_count` | failed calls on this arm |
 
-`instar corpus rubric` applies such a rubric to history (`04-RUNBOOK.md` §8c). A
+`instar corpus rubric` applies such a rubric to history (`05-RUNBOOK.md` §8c). A
 routing metric asked of an arms run is `unmeasured`, never a pass.
 
 Three notes that matter more than they look:
@@ -292,6 +292,6 @@ and do not belong in this repository. See `../../CLAUDE.md` §IP boundary.
 
 ## See also
 
-- [`04-RUNBOOK.md`](04-RUNBOOK.md) — running Instar end to end.
-- [`05-PROVIDERS.md`](05-PROVIDERS.md) — connecting the models you want to measure.
-- [`10-CODE-OVERVIEW.md`](10-CODE-OVERVIEW.md) — `instar.rubrics.spec` internals.
+- [`05-RUNBOOK.md`](05-RUNBOOK.md) — running Instar end to end.
+- [`06-PROVIDERS.md`](06-PROVIDERS.md) — connecting the models you want to measure.
+- [`13-CODE-OVERVIEW.md`](13-CODE-OVERVIEW.md) — `instar.rubrics.spec` internals.

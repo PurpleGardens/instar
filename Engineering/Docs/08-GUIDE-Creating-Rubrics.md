@@ -1,10 +1,10 @@
 # How to Create Rubrics for Your AI Spend
 
-> **A guide, not a reference.** [`06-RUBRICS.md`](06-RUBRICS.md) is the reference — it
+> **A guide, not a reference.** [`07-RUBRICS.md`](07-RUBRICS.md) is the reference — it
 > lists every field, every metric, and the exact verdict rules. This guide
 > teaches the harder part: **how to arrive at a rubric that actually decides
 > your question**, and how it behaves once you run it. Read this to learn the
-> method; keep `06-RUBRICS.md` open for the field list.
+> method; keep `07-RUBRICS.md` open for the field list.
 
 ---
 
@@ -186,7 +186,7 @@ first.
 > **Often the number isn't yours to invent.** The threshold is a business
 > judgment owned by whoever owns the outcome — and that is frequently a different
 > person from the one writing the rubric. If that's you, or if you need to brief
-> them, [`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md) is the one-page,
+> them, [`03-GUIDE-Setting-the-Bar.md`](03-GUIDE-Setting-the-Bar.md) is the one-page,
 > jargon-free version to hand them. Your job here is to turn the numbers they
 > give you into the dimensions below.
 
@@ -336,7 +336,7 @@ which keeps the history honest as your understanding improves.
 
 ## Part 6 — Which metric for which intent
 
-The full list is in `06-RUBRICS.md`. This is the part that matters when you're
+The full list is in `07-RUBRICS.md`. This is the part that matters when you're
 choosing: *what do you actually mean, and which metric means that?*
 
 | You want to know... | Use | Not |
@@ -534,9 +534,9 @@ BEFORE trusting the verdict.
 
 ## See also
 
-- [`06-RUBRICS.md`](06-RUBRICS.md) — the field-and-metric reference.
-- [`04-RUNBOOK.md`](04-RUNBOOK.md) — running Instar end to end.
-- [`05-PROVIDERS.md`](05-PROVIDERS.md) — connecting the models you're deciding between.
+- [`07-RUBRICS.md`](07-RUBRICS.md) — the field-and-metric reference.
+- [`05-RUNBOOK.md`](05-RUNBOOK.md) — running Instar end to end.
+- [`06-PROVIDERS.md`](06-PROVIDERS.md) — connecting the models you're deciding between.
 - `Planning/Engagement-Methodology.md` §B — where rubric definition sits in a
   full evaluation, and why dimensions and thresholds usually come from different
   people.
