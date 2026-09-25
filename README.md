@@ -62,14 +62,14 @@ Python 3.11+.
 
 ## Where to go next
 
-- [`Engineering/Docs/01-GUIDE-Measure-Your-Own-Prompts.md`](./Engineering/Docs/01-GUIDE-Measure-Your-Own-Prompts.md) — **no application needed:** bring 10–30 of your own prompts and find out whether a cheaper model is good enough for your work. About an hour and a few dollars.
-- [`Engineering/Docs/04-RUNBOOK.md`](./Engineering/Docs/04-RUNBOOK.md) — how to actually run it, including a walkthrough for measuring **your own** workload.
-- [`Engineering/Docs/05-PROVIDERS.md`](./Engineering/Docs/05-PROVIDERS.md) — connecting Instar to a hosted LLM or a self-hosted small model.
-- [`Engineering/Docs/07-GUIDE-Creating-Rubrics.md`](./Engineering/Docs/07-GUIDE-Creating-Rubrics.md) — a step-by-step guide to writing a rubric that decides your AI-spend question.
-- [`Engineering/Docs/06-RUBRICS.md`](./Engineering/Docs/06-RUBRICS.md) — the rubric reference: every field, metric, and verdict rule.
-- [`Engineering/Docs/10-CODE-OVERVIEW.md`](./Engineering/Docs/10-CODE-OVERVIEW.md) — orientation for contributors: architecture, the four core abstractions, and how to extend each.
+- [`Engineering/Docs/02-GUIDE-Measure-Your-Own-Prompts.md`](./Engineering/Docs/02-GUIDE-Measure-Your-Own-Prompts.md) — **no application needed:** bring 10–30 of your own prompts and find out whether a cheaper model is good enough for your work. About an hour and a few dollars.
+- [`Engineering/Docs/05-RUNBOOK.md`](./Engineering/Docs/05-RUNBOOK.md) — how to actually run it, including a walkthrough for measuring **your own** workload.
+- [`Engineering/Docs/06-PROVIDERS.md`](./Engineering/Docs/06-PROVIDERS.md) — connecting Instar to a hosted LLM or a self-hosted small model.
+- [`Engineering/Docs/08-GUIDE-Creating-Rubrics.md`](./Engineering/Docs/08-GUIDE-Creating-Rubrics.md) — a step-by-step guide to writing a rubric that decides your AI-spend question.
+- [`Engineering/Docs/07-RUBRICS.md`](./Engineering/Docs/07-RUBRICS.md) — the rubric reference: every field, metric, and verdict rule.
+- [`Engineering/Docs/13-CODE-OVERVIEW.md`](./Engineering/Docs/13-CODE-OVERVIEW.md) — orientation for contributors: architecture, the four core abstractions, and how to extend each.
 - [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) — the plan: IP boundary, roadmap, sprint, open questions.
-- [`Engineering/Docs/11-COMPARISON-smevals.md`](./Engineering/Docs/11-COMPARISON-smevals.md) — how Instar composes with [smevals](https://github.com/prime-radiant-inc/smevals), and which questions each tool is the right one for.
+- [`Engineering/Docs/14-COMPARISON-smevals.md`](./Engineering/Docs/14-COMPARISON-smevals.md) — how Instar composes with [smevals](https://github.com/prime-radiant-inc/smevals), and which questions each tool is the right one for.
 - [`Planning/Naming.md`](./Planning/Naming.md) — why "Instar," what off-box verifications are still owed before public announcement.
 - Docs site — planned: GitHub Pages under `purpleblossomai.github.io/instar/`, later `instar-dev.org`.
 

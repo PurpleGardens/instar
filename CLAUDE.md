@@ -50,9 +50,9 @@ instar/
 │   ├── Introduction.md    # contributor-facing recruiting doc
 │   ├── Docs/              # knowledge tree — four teaching modes (Explain/Guide/Do/Judge)
 │   │   ├── README.md      # start-here index; see for the full doc map
-│   │   ├── 06-RUBRICS.md, 07-GUIDE-Creating-Rubrics.md, 02-GUIDE-Setting-the-Bar.md
-│   │   ├── 08-LESSON-Rubrics-Hands-On.md, 03-CASE-STUDY-Qwen-Triage.md
-│   │   ├── 10-CODE-OVERVIEW.md, 05-PROVIDERS.md, 04-RUNBOOK.md
+│   │   ├── 07-RUBRICS.md, 08-GUIDE-Creating-Rubrics.md, 03-GUIDE-Setting-the-Bar.md
+│   │   ├── 09-LESSON-Rubrics-Hands-On.md, 04-CASE-STUDY-Qwen-Triage.md
+│   │   ├── 13-CODE-OVERVIEW.md, 06-PROVIDERS.md, 05-RUNBOOK.md
 │   │   └── 00-README.md   # symlink to README.md so index sorts first
 │   ├── src/instar/        # harness: core/, cli/, policies/, providers/, reporters/, rubrics/
 │   ├── fixtures/          # synthetic traffic, catalogs, illustrative rubric

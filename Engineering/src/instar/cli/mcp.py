@@ -138,7 +138,7 @@ def add_mcp_parser(sub: Any) -> None:
         "mcp",
         help="measure MCP servers: definition size, and tool calls replayed without a model",
         description="Measure MCP servers directly, with no model in the loop. See "
-        "Engineering/Docs/GUIDE-MCP-Measurement.md.",
+        "Engineering/Docs/12-GUIDE-MCP-Measurement.md.",
     )
     msub = mcp.add_subparsers(dest="mcp_cmd", required=True)
 

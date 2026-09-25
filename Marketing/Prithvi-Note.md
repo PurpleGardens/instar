@@ -20,7 +20,7 @@ Prithvi hasn't been told that. It is recorded in this repo as a decision already
 So the note leads with it rather than burying it under the naming heads-up.
 
 The forcing function for sending now: a possible outreach to Simon Willison about
-[`../Engineering/Docs/11-COMPARISON-smevals.md`](../Engineering/Docs/11-COMPARISON-smevals.md).
+[`../Engineering/Docs/14-COMPARISON-smevals.md`](../Engineering/Docs/14-COMPARISON-smevals.md).
 If that lands anywhere with reach, Prithvi hearing "Instar" from a Willison post before
 hearing it from Brian is the bad version.
 

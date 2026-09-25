@@ -7,17 +7,17 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 
 | If you want to… | Read, in order |
 |---|---|
-| **Understand what Instar is and why it's worth doing** (manager, no code) | [`OVERVIEW-For-Managers.md`](OVERVIEW-For-Managers.md) |
-| **Decide whether a model is good enough** (you own the outcome, not the tool) | [`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md) |
-| **Learn rubrics by running something** (10 minutes, no spend) | [`08-LESSON-Rubrics-Hands-On.md`](08-LESSON-Rubrics-Hands-On.md) |
-| **Find out if a cheaper model is good enough for *your own* prompts** (no app needed, ~1 hour) | [`01-GUIDE-Measure-Your-Own-Prompts.md`](01-GUIDE-Measure-Your-Own-Prompts.md) |
-| **Measure an MCP server** (no model needed) | [`GUIDE-MCP-Measurement.md`](GUIDE-MCP-Measurement.md) |
-| **Score answers against a written checklist** (absolute judge, baseline included) | [`GUIDE-Criteria-Judge.md`](GUIDE-Criteria-Judge.md) |
-| **Run it and measure a workload** | [`04-RUNBOOK.md`](04-RUNBOOK.md) → [`05-PROVIDERS.md`](05-PROVIDERS.md) |
-| **Turn a decision into a pass/fail check** | [`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md) → [`06-RUBRICS.md`](06-RUBRICS.md) |
-| **Learn to read a result with judgment** | [`03-CASE-STUDY-Qwen-Triage.md`](03-CASE-STUDY-Qwen-Triage.md) |
-| **Work on the code** | [`10-CODE-OVERVIEW.md`](10-CODE-OVERVIEW.md) → [`04-RUNBOOK.md`](04-RUNBOOK.md) |
-| **Figure out whether Instar is even the right tool** | [`11-COMPARISON-smevals.md`](11-COMPARISON-smevals.md) |
+| **Understand what Instar is and why it's worth doing** (manager, no code) | [`01-OVERVIEW-For-Managers.md`](01-OVERVIEW-For-Managers.md) |
+| **Decide whether a model is good enough** (you own the outcome, not the tool) | [`03-GUIDE-Setting-the-Bar.md`](03-GUIDE-Setting-the-Bar.md) |
+| **Learn rubrics by running something** (10 minutes, no spend) | [`09-LESSON-Rubrics-Hands-On.md`](09-LESSON-Rubrics-Hands-On.md) |
+| **Find out if a cheaper model is good enough for *your own* prompts** (no app needed, ~1 hour) | [`02-GUIDE-Measure-Your-Own-Prompts.md`](02-GUIDE-Measure-Your-Own-Prompts.md) |
+| **Measure an MCP server** (no model needed) | [`12-GUIDE-MCP-Measurement.md`](12-GUIDE-MCP-Measurement.md) |
+| **Score answers against a written checklist** (absolute judge, baseline included) | [`11-GUIDE-Criteria-Judge.md`](11-GUIDE-Criteria-Judge.md) |
+| **Run it and measure a workload** | [`05-RUNBOOK.md`](05-RUNBOOK.md) → [`06-PROVIDERS.md`](06-PROVIDERS.md) |
+| **Turn a decision into a pass/fail check** | [`08-GUIDE-Creating-Rubrics.md`](08-GUIDE-Creating-Rubrics.md) → [`07-RUBRICS.md`](07-RUBRICS.md) |
+| **Learn to read a result with judgment** | [`04-CASE-STUDY-Qwen-Triage.md`](04-CASE-STUDY-Qwen-Triage.md) |
+| **Work on the code** | [`13-CODE-OVERVIEW.md`](13-CODE-OVERVIEW.md) → [`05-RUNBOOK.md`](05-RUNBOOK.md) |
+| **Figure out whether Instar is even the right tool** | [`14-COMPARISON-smevals.md`](14-COMPARISON-smevals.md) |
 
 ---
 
@@ -25,20 +25,20 @@ read. If you're not sure where to begin, pick the row that sounds like you.
 
 | Doc | It's a… | For | In one line |
 |---|---|---|---|
-| [`OVERVIEW-For-Managers.md`](OVERVIEW-For-Managers.md) | overview (explain) | manager, decision owner | What Instar does and why it's worth doing, in business terms: the four ideas, what the report tells you, MCP measurement, benefits and limits. No code. |
-| [`02-GUIDE-Setting-the-Bar.md`](02-GUIDE-Setting-the-Bar.md) | one-pager | decision owner | The bar is a business judgment, not a technical one. How to set it, in plain terms — no tool, no jargon. |
-| [`08-LESSON-Rubrics-Hands-On.md`](08-LESSON-Rubrics-Hands-On.md) | lesson (do it) | student | Run four commands, change one number, watch a verdict flip. Learn rubrics by feeling them move. |
-| [`01-GUIDE-Measure-Your-Own-Prompts.md`](01-GUIDE-Measure-Your-Own-Prompts.md) | task guide | individual | Bring 10–30 of your own prompts; compare your everyday model with cheaper ones under two judges and a control. One key, about an hour. |
-| [`GUIDE-MCP-Measurement.md`](GUIDE-MCP-Measurement.md) | task guide | operator | Size an MCP server's tool definitions and replay tool calls against it with no model: latency, errors, context cost per result, checks. Read-only by default. |
-| [`GUIDE-Criteria-Judge.md`](GUIDE-Criteria-Judge.md) | task guide | operator + decision owner | Write down what a good answer must do as a checklist; a model judge checks every arm against it, baseline included. For when "as good as the baseline" is the wrong question. |
-| [`09-GUIDE-Human-Grading.md`](09-GUIDE-Human-Grading.md) | task guide | grader + operator | Export a blind spreadsheet from a saved run, grade PASS / MARGINAL / FAIL by hand, and score the run from it, beside the LLM judges. |
-| [`04-RUNBOOK.md`](04-RUNBOOK.md) | task guide | operator | Every command, with a walkthrough for measuring your own workload. |
-| [`05-PROVIDERS.md`](05-PROVIDERS.md) | task guide | operator | Connecting a hosted LLM (account → key → URL) or a self-hosted SLM (server, sizing, licensing). |
-| [`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md) | tutorial | operator + decision owner | How to *arrive at* a rubric that decides your question — the method, not just the syntax. |
-| [`06-RUBRICS.md`](06-RUBRICS.md) | reference | operator | Every rubric field, metric, and verdict rule. Keep it open while writing one. |
-| [`03-CASE-STUDY-Qwen-Triage.md`](03-CASE-STUDY-Qwen-Triage.md) | case study (judge it) | student + operator | A real run where the verdict said FAIL and was wrong to trust. Teaches the judgment no tool can automate. |
-| [`10-CODE-OVERVIEW.md`](10-CODE-OVERVIEW.md) | reference | contributor | Architecture, the four core abstractions, and how to extend each. |
-| [`11-COMPARISON-smevals.md`](11-COMPARISON-smevals.md) | orientation | evaluator | Instar answers the workload-economics question; smevals answers the capability question. Which to reach for, and how they chain. |
+| [`01-OVERVIEW-For-Managers.md`](01-OVERVIEW-For-Managers.md) | overview (explain) | manager, decision owner | What Instar does and why it's worth doing, in business terms: the four ideas, what the report tells you, MCP measurement, benefits and limits. No code. |
+| [`03-GUIDE-Setting-the-Bar.md`](03-GUIDE-Setting-the-Bar.md) | one-pager | decision owner | The bar is a business judgment, not a technical one. How to set it, in plain terms — no tool, no jargon. |
+| [`09-LESSON-Rubrics-Hands-On.md`](09-LESSON-Rubrics-Hands-On.md) | lesson (do it) | student | Run four commands, change one number, watch a verdict flip. Learn rubrics by feeling them move. |
+| [`02-GUIDE-Measure-Your-Own-Prompts.md`](02-GUIDE-Measure-Your-Own-Prompts.md) | task guide | individual | Bring 10–30 of your own prompts; compare your everyday model with cheaper ones under two judges and a control. One key, about an hour. |
+| [`12-GUIDE-MCP-Measurement.md`](12-GUIDE-MCP-Measurement.md) | task guide | operator | Size an MCP server's tool definitions and replay tool calls against it with no model: latency, errors, context cost per result, checks. Read-only by default. |
+| [`11-GUIDE-Criteria-Judge.md`](11-GUIDE-Criteria-Judge.md) | task guide | operator + decision owner | Write down what a good answer must do as a checklist; a model judge checks every arm against it, baseline included. For when "as good as the baseline" is the wrong question. |
+| [`10-GUIDE-Human-Grading.md`](10-GUIDE-Human-Grading.md) | task guide | grader + operator | Export a blind spreadsheet from a saved run, grade PASS / MARGINAL / FAIL by hand, and score the run from it, beside the LLM judges. |
+| [`05-RUNBOOK.md`](05-RUNBOOK.md) | task guide | operator | Every command, with a walkthrough for measuring your own workload. |
+| [`06-PROVIDERS.md`](06-PROVIDERS.md) | task guide | operator | Connecting a hosted LLM (account → key → URL) or a self-hosted SLM (server, sizing, licensing). |
+| [`08-GUIDE-Creating-Rubrics.md`](08-GUIDE-Creating-Rubrics.md) | tutorial | operator + decision owner | How to *arrive at* a rubric that decides your question — the method, not just the syntax. |
+| [`07-RUBRICS.md`](07-RUBRICS.md) | reference | operator | Every rubric field, metric, and verdict rule. Keep it open while writing one. |
+| [`04-CASE-STUDY-Qwen-Triage.md`](04-CASE-STUDY-Qwen-Triage.md) | case study (judge it) | student + operator | A real run where the verdict said FAIL and was wrong to trust. Teaches the judgment no tool can automate. |
+| [`13-CODE-OVERVIEW.md`](13-CODE-OVERVIEW.md) | reference | contributor | Architecture, the four core abstractions, and how to extend each. |
+| [`14-COMPARISON-smevals.md`](14-COMPARISON-smevals.md) | orientation | evaluator | Instar answers the workload-economics question; smevals answers the capability question. Which to reach for, and how they chain. |
 
 ## How these docs are organized: teach by mode, not just by reader
 
@@ -48,7 +48,7 @@ a folder:
 
 | Mode | It answers | Genres here |
 |---|---|---|
-| **Explain** | *What is this?* | reference (`RUBRICS`, `CODE-OVERVIEW`), overview (`OVERVIEW-For-Managers`) |
+| **Explain** | *What is this?* | reference (`RUBRICS`, `CODE-OVERVIEW`), overview (`01-OVERVIEW-For-Managers`) |
 | **Guide** | *How do I do it, step by step?* | tutorial + task guide (`GUIDE-*`, `RUNBOOK`, `PROVIDERS`) |
 | **Do** | *Let me try it and see what happens.* | lesson (`LESSON-*`) |
 | **Judge** | *How do I read a result wisely — and when do I distrust it?* | case study (`CASE-STUDY-*`) |
@@ -66,14 +66,14 @@ topic.
 
 1. `pip install -e ".[dev]"`
 2. `instar route` — a complete hermetic run against a shipped fixture. No key,
-   no network, no spend. ([`04-RUNBOOK.md`](04-RUNBOOK.md) explains what you're seeing.)
+   no network, no spend. ([`05-RUNBOOK.md`](05-RUNBOOK.md) explains what you're seeing.)
 3. Add `--rubric Engineering/fixtures/rubrics/support-triage-v1.json` and watch
-   the verdict appear. ([`07-GUIDE-Creating-Rubrics.md`](07-GUIDE-Creating-Rubrics.md)
+   the verdict appear. ([`08-GUIDE-Creating-Rubrics.md`](08-GUIDE-Creating-Rubrics.md)
    explains how to write your own.)
 
 Everything above runs in **mock mode**, which is deterministic and free. Going
 live — real models, real spend — is one `--live` flag and a provider, covered in
-[`05-PROVIDERS.md`](05-PROVIDERS.md).
+[`06-PROVIDERS.md`](06-PROVIDERS.md).
 
 ---
 
