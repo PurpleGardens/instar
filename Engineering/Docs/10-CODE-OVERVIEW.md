@@ -1,6 +1,6 @@
 # Instar — Code Overview
 
-> **TL;DR:** Instar replays a captured workload (a JSONL file of `TrafficSample` rows) against candidate models through a routing policy, prices every call, scores what the cheaper model gave up, and writes an auditable report. Four abstractions carry the whole design — `TrafficSample`, `Backend`, `RoutingPolicy`, `Judge` — and each is one small ABC you can subclass. The core is stdlib-only; provider SDKs are optional extras imported lazily. Everything defaults to a hermetic mock mode that costs nothing and is byte-for-byte reproducible.
+> **TL;DR:** Instar replays a captured workload (a JSONL file of `TrafficSample` rows) against candidate models through a routing policy, prices every call, scores what the cheaper model gave up, and writes an auditable report. Four abstractions carry the whole design — `TrafficSample`, `Backend`, `RoutingPolicy`, `Judge` — and each is one small ABC you can subclass. The core is stdlib-only; provider SDKs are optional extras imported lazily. Everything defaults to a hermetic mock mode that costs nothing and is byte-for-byte reproducible. The same seams also measure MCP servers: on their own with no model (`mcp/`), and as the tools of a model running an agent loop, which is just another `Backend`.
 
 Audience: a new contributor. For "how do I actually run this", see [`04-RUNBOOK.md`](./04-RUNBOOK.md).
 
@@ -53,6 +53,10 @@ The `route` runner's per-sample loop, in order:
 
 The `gateway` runner is simpler: it replays the same workload through two backends, interleaved `A, B, A, B, ...`, and compares p50/p95/p99 wall-clock latency. Interleaving is deliberate — sequential blocks would attribute any drift in network conditions to whichever arm ran second, which is exactly the difference being measured.
 
+The `arms` runner (`core/arms.py`) generalizes both: N arms, each a `Backend` plus its own model, interleaved, with cost, latency and (given a judge) quality per arm against a chosen baseline. It can capture a transcript of every answer, which `rejudge` re-scores with another judge, including a person's grades, without paying for new generations.
+
+**MCP** has two layers. `instar mcp probe` and `instar mcp run` (`mcp/probe.py`, `mcp/toolcalls.py`) talk to MCP servers directly through a small stdlib client (`mcp/client.py`) and involve no model: they size tool definitions and replay recorded tool calls. `instar arms --mcp-servers` wraps every arm's backend in `MCPAgentBackend` (`mcp/agent.py`), which runs a tool-use loop over the servers' tools through `Backend.chat()` and returns an ordinary `CompletionResult`. That's why judges, `rejudge`, human grading and the corpus work on agent runs without knowing they are agent runs. Both layers share one safety rule: a tool not marked read-only is never called unless allow-listed.
+
 ---
 
 ## Module tour
@@ -76,7 +80,16 @@ All paths are relative to `Engineering/src/instar/`.
 | `policies/__init__.py` | `build_policy`, `POLICY_NAMES` | Name-to-policy construction, used by the CLI. |
 | `rubrics/base.py` | `Judge` ABC, `JudgeResult` | Relative scoring: not "is this output good?" but "what did we lose by routing this call to the cheap model?" |
 | `rubrics/judges.py` | `MockJudge`, `LabelMatchJudge`, `LLMJudge`, `AutoJudge` | Deterministic, objective, model-based, and dispatching. |
+| `rubrics/criteria.py` | `CriteriaJudge`, `CriteriaSet`, `MockCriteriaBackend` | Absolute scoring: one answer against a per-feature checklist, fraction met, critical criteria gate to 0. |
 | `rubrics/human.py` | `HumanJudge`, `write_grading_sheet`, `load_grades` | A person as the judge: blind CSV export from a transcript, grades read back and scored through `rejudge`. |
+| `mcp/client.py` | `MCPClient`, `ServerSpec`, `load_servers` | A stdlib-only MCP client (stdio and streamable HTTP) implementing only what measurement needs: initialize, tools/list, tools/call, ping. |
+| `mcp/probe.py` | `probe`, `ServerProbe`, `ToolDef` | Sizes every tool definition a server exposes (estimated tokens, split description/schema) and flags missing annotations. |
+| `mcp/toolcalls.py` | `ToolCall`, `load_calls`, `run_toolcalls`, `call_permitted` | Replays recorded tool calls at servers with no model: latency, tool vs transport errors, response size, `expect` checks. Refuses tools not marked read-only unless allowed. |
+| `mcp/obot.py` | `convert`, `read_export`, `write_calls` | Turns an Obot audit-log export (normalised `AuditLogEvent` JSONL) into a tool-call fixture: gateway calls and Obot Sentry MCP-tool reports; webhook-rewritten requests preferred; redacted payloads skipped and counted. |
+| `mcp/agent.py` | `MCPAgentBackend`, `MCPToolbox`, `ToolCassette` | Phase 2: wraps any backend with `chat()` in a tool-use loop over MCP servers and returns an ordinary `CompletionResult` carrying a `trajectory`, so arms, judges, rejudge and the corpus work unchanged. Same read-only gate; cassettes hold tool output fixed across arms. |
+| `mcp/demo_server.py` | `TOOLS`, `make_http_server` | A synthetic MCP server (stdio or HTTP) for trying `instar mcp` and for tests. |
+| `reporters/mcp.py` | `report_probe`, `report_toolcalls` | Writes MCP runs to `<runs-dir>/<label>/`. |
+| `cli/mcp.py` | `add_mcp_parser` | `instar mcp probe` and `instar mcp run`. |
 | `reporters/markdown.py` | `report_route`, `report_sweep`, `report_gateway` | Writes `<runs-dir>/<label>/`. Every report carries its own caveats on its face. |
 | `cli/main.py` | `build_parser`, `main`, `_cmd_route`, `_cmd_gateway` | `instar route` and `instar gateway`. Mock is the default; `--live` opts in. |
 
@@ -99,7 +112,7 @@ class TrafficSample:
     meta: dict[str, Any] = field(default_factory=dict)
 ```
 
-`category`, if set, must be `"foreground"` or `"background"`; anything else raises at construction. `meta` is free-form and non-PII; the recognized keys are `gold` (correct label, for objective scoring), `cadence`, `static_prefix_tokens`, and `warm`.
+`category`, if set, must be `"foreground"` or `"background"`; anything else raises at construction. `meta` is free-form and non-PII; the recognized keys are `gold` (correct label, for objective scoring), `criteria` (a per-sample checklist for `CriteriaJudge`), `cadence`, `static_prefix_tokens`, `warm`, and `mock_tool_calls` (scripts the mock backend's tool calls in agent runs).
 
 **Extending it:** don't subclass. Put workload-specific information in `meta` and read it in your own policy, judge, or scorer. Adding a top-level field means changing `from_json`/`to_json` and every fixture in the repo, and risks reintroducing the PII surface the format deliberately does not have.
 
@@ -111,11 +124,16 @@ class Backend(ABC):
 
     @abstractmethod
     def complete(self, sample: TrafficSample, model: str) -> CompletionResult: ...
+
+    def chat(self, request: ChatRequest) -> ChatTurn:  # optional
+        raise NotImplementedError
 ```
 
-`CompletionResult` carries `text`, `model`, `input_tokens`, `output_tokens`, `latency_s`, `ok`, `error`.
+`CompletionResult` carries `text`, `model`, `input_tokens`, `output_tokens`, `latency_s`, `ok`, `error`, plus `cost_usd` (what the provider says the call cost, when it says; `None` is unknown, never free) and `trajectory` (for an agent run, every turn and tool call on the way to `text`; `None` otherwise).
 
-**Extending it:** subclass `Backend`, implement `complete`, set `name` (it labels your arm in reports). The one hard rule: **never raise for a provider error.** Return `CompletionResult.failure(model, "<reason>")` instead, so one dead call cannot abort a long run. Report the provider's own token counts; do not estimate. `estimate_tokens` exists for mock mode only.
+`chat()` is one tool-capable model turn, and only agent runs need it. `ChatRequest` carries a provider-neutral conversation (user messages, earlier assistant turns, tool results) and `ToolSpec`s; `ChatTurn` returns text, `ToolCallRequest`s, tokens, cost and the stop reason. Each backend translates to its own dialect: `AnthropicBackend` (tool_use/tool_result blocks, sending the assistant's raw content blocks back unchanged so thinking blocks round-trip), `OpenAICompatBackend` (chat-completions `tools`/`tool_calls`), and `MockBackend` (scripted from `meta.mock_tool_calls`). A backend without it can't be used with `--mcp-servers`.
+
+**Extending it:** subclass `Backend`, implement `complete`, set `name` (it labels your arm in reports). Implement `chat` too if the provider supports tool calling and you want agent runs; same rule, return `ChatTurn.failure(...)` rather than raising. The one hard rule: **never raise for a provider error.** Return `CompletionResult.failure(model, "<reason>")` instead, so one dead call cannot abort a long run. Report the provider's own token counts; do not estimate. `estimate_tokens` exists for mock mode only.
 
 Before writing a new backend, check whether `OpenAICompatBackend` already covers your target — most self-hosted servers and gateways speak the chat-completions dialect, and pointing that class at a different URL costs nothing.
 
@@ -141,13 +159,27 @@ The cheaper extension point, if you only want smarter scoring rather than differ
 class Judge(ABC):
     name: str = "abstract"
 
+    absolute: bool = False
+
     @abstractmethod
     def score(self, sample: TrafficSample,
               strong: CompletionResult,
               weak: CompletionResult) -> JudgeResult: ...
+
+    def abstains(self, sample, strong, weak) -> bool:  # default False
+        ...
+
+    def key(self) -> JudgeKey: ...
 ```
 
-`JudgeResult(score, rationale)`, score in `[0, 1]` where `1.0` means the weak output is as good as the strong one for this call. Scoring is **relative** on purpose: a cost study has to answer "what do we lose by routing this call to the cheap model?", and only a paired comparison answers that when the workload has no ground truth.
+`JudgeResult(score, rationale)`, score in `[0, 1]` where `1.0` means the weak output is as good as the strong one for this call. Scoring is **relative** by default, on purpose: a cost study has to answer "what do we lose by routing this call to the cheap model?", and only a paired comparison answers that when the workload has no ground truth.
+
+Two optional hooks change that:
+
+- **`absolute = True`**: the judge ignores `strong` and scores `weak` against the task alone (`CriteriaJudge`). The arms runner then scores the baseline too, by passing its own answer as `weak`, and the corpus reads an absolute judge's control arm against the baseline rather than against 1.0.
+- **`abstains()`**: return `True` to leave a pair unscored (a human who didn't grade a row, a sample with no criteria). The runner skips it the way it skips a failed call, so it's never counted as a pass or a fail.
+
+`key()` returns the `JudgeKey` (kind, model, vendor family, blind, absolute, version) stored with every score, because the same answers score differently under different judges.
 
 Shipped judges:
 
@@ -157,13 +189,14 @@ Shipped judges:
 | `LLMJudge` | Open-ended generation with no ground truth | Three rungs: `PASS` 1.0, `MARGINAL` 0.5, `FAIL` 0.0. |
 | `AutoJudge` | Mixed workloads | Samples with `meta["gold"]` go to the label judge, everything else to the LLM judge. |
 | `MockJudge` | Hermetic runs | Deterministic; never reads the completion text; measures nothing. |
+| `CriteriaJudge` | No trustworthy baseline, or the thing under test isn't a model swap | **Absolute**: scores each answer against written criteria (YES/NO each); score = fraction met, 0.0 on a critical miss. The baseline is scored too. A sample with no criteria is unscored. See [`GUIDE-Criteria-Judge.md`](GUIDE-Criteria-Judge.md). |
 | `HumanJudge` | Validating a model judge; any time a person should decide | Reads a filled `instar grade-sheet` CSV. Same PASS/MARGINAL/FAIL rungs. Ungraded rows **abstain** (`Judge.abstains`), so they are unscored rather than passed. See [`09-GUIDE-Human-Grading.md`](09-GUIDE-Human-Grading.md). |
 
 **Prefer objective scoring.** If your workload permits a label match, use it: it is exact, free, instant, and — unlike an LLM judge — is not itself a model whose judgment you would then have to validate. An LLM judge is a measurement instrument with its own error; a cost study resting on an unvalidated one has moved the uncertainty rather than removed it. Validate `LLMJudge` against hand-graded samples before trusting a number from it.
 
 The `MARGINAL` rung is the one that earns its keep. A cheap answer that triggers a user retry is not a saving — the user pays again, in a second call and in their own patience. Collapsing `MARGINAL` into `PASS` is how a routing change looks free on a spreadsheet and costs money in production.
 
-**Extending it:** subclass and implement `score`. Always populate `rationale`; it is written into the report, and a score nobody can audit is a number nobody should act on.
+**Extending it:** subclass and implement `score`; override `key` if your judge consults a model, and set `absolute` / override `abstains` if they apply. Always populate `rationale`; it is written into the report, and a score nobody can audit is a number nobody should act on.
 
 ---
 

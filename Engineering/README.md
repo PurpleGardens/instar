@@ -16,7 +16,7 @@ Code, tests, examples, fixtures, docs source, and engineering notes for Instar. 
 - **`Docs/`** — contributor documentation: `10-CODE-OVERVIEW.md` for orientation, `04-RUNBOOK.md` for running things.
 - **`docs/`** — MkDocs Material source for the published site. Not yet scaffolded; see `../Planning/Project-Plan.md`.
 
-The core is **stdlib-only** on purpose: mock mode runs anywhere, `pip install instar` pulls in nothing, and CI never breaks on a provider SDK release. Provider SDKs are optional extras, imported lazily by the module that needs them.
+The core is **stdlib-only** on purpose: mock mode runs anywhere, `pip install instar-harness` pulls in nothing, and CI never breaks on a provider SDK release. Provider SDKs are optional extras, imported lazily by the module that needs them.
 
 ## Running it
 

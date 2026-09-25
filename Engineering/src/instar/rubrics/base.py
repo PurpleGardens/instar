@@ -102,15 +102,33 @@ class JudgeKey:
 
     ``model`` and ``family`` are ``None`` for judges that consult no model
     (objective label matching, the mock).
+
+    ``absolute`` marks a judge that scores each answer on its own against the
+    task (a criteria checklist) rather than against the baseline's answer. The
+    two scales mean different things: under a relative judge the control arm's
+    true score is 1.0, under an absolute one it is whatever the baseline
+    scored. Readers of a corpus need to know which they are looking at.
     """
 
     kind: str
     model: str | None = None
     family: str | None = None
     blind: bool = False
+    absolute: bool = False
+    # Version of the judge's own instructions when they are an input (a
+    # criteria file). The same judge model reading a different checklist is a
+    # different instrument.
+    version: str | None = None
 
     def to_json(self) -> dict[str, str | bool | None]:
-        return {"kind": self.kind, "model": self.model, "family": self.family, "blind": self.blind}
+        return {
+            "kind": self.kind,
+            "model": self.model,
+            "family": self.family,
+            "blind": self.blind,
+            "absolute": self.absolute,
+            "version": self.version,
+        }
 
     @classmethod
     def from_json(cls, d: dict[str, object]) -> JudgeKey:
@@ -121,13 +139,22 @@ class JudgeKey:
             model=None if model is None else str(model),
             family=None if family is None else str(family),
             blind=bool(d.get("blind", False)),
+            absolute=bool(d.get("absolute", False)),
+            version=None if d.get("version") is None else str(d.get("version")),
         )
 
 
 class Judge(ABC):
-    """Scores a weak completion against the strong baseline."""
+    """Scores a weak completion against the strong baseline.
+
+    An *absolute* judge (``absolute = True``) ignores ``strong`` and scores
+    ``weak`` against the task alone. The arms runner then scores the baseline
+    arm as well, by passing its own answer as ``weak``, because an absolute
+    score for the baseline is a measurement rather than a tautology.
+    """
 
     name: str = "abstract"
+    absolute: bool = False
 
     def key(self) -> JudgeKey:
         """Identify this judge. Model-based judges override to add model and family."""

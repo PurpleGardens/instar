@@ -28,7 +28,13 @@ import urllib.request
 from typing import Any
 
 from instar.core.traffic import TrafficSample
-from instar.providers.base import Backend, CompletionResult
+from instar.providers.base import (
+    Backend,
+    ChatRequest,
+    ChatTurn,
+    CompletionResult,
+    ToolCallRequest,
+)
 
 DEFAULT_TIMEOUT_S = 120.0
 
@@ -167,6 +173,113 @@ class OpenAICompatBackend(Backend):
             ok=True,
             cost_usd=_reported_cost(usage),
         )
+
+    def chat(self, request: ChatRequest) -> ChatTurn:
+        """One turn of a tool-using conversation in the chat-completions dialect.
+
+        Tools go out as ``{"type": "function", "function": {...}}``; tool calls
+        come back as ``message.tool_calls`` with JSON-string arguments; results
+        go back as ``role: "tool"`` messages. Arguments that aren't valid JSON
+        are passed to the tool as ``{}`` and flagged in ``_unparsed_arguments``
+        so the failure is visible rather than silently repaired.
+        """
+        messages: list[dict[str, Any]] = []
+        if request.system:
+            messages.append({"role": "system", "content": request.system})
+        for m in request.messages:
+            messages.extend(_to_openai(m))
+        payload: dict[str, Any] = dict(self.extra_body)
+        if self.request_usage_accounting:
+            payload.setdefault("usage", {"include": True})
+        payload.update(
+            {"model": request.model, "messages": messages, "max_tokens": request.max_tokens}
+        )
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.input_schema,
+                    },
+                }
+                for t in request.tools
+            ]
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+
+        t0 = time.perf_counter()
+        try:
+            data = self._post(payload)
+        except urllib.error.HTTPError as e:
+            detail = ""
+            with contextlib.suppress(Exception):
+                detail = e.read().decode("utf-8", errors="replace")[:200]
+            return ChatTurn.failure(
+                request.model, f"HTTP {e.code}: {detail or e.reason}", time.perf_counter() - t0
+            )
+        except Exception as e:  # network, timeout, malformed JSON
+            return ChatTurn.failure(
+                request.model, f"{type(e).__name__}: {e}", time.perf_counter() - t0
+            )
+        dt = time.perf_counter() - t0
+
+        choices = data.get("choices") or []
+        if not choices:
+            return ChatTurn.failure(request.model, "response contained no choices", dt)
+        message = choices[0].get("message") or {}
+        calls: list[ToolCallRequest] = []
+        for i, tc in enumerate(message.get("tool_calls") or []):
+            fn = tc.get("function") or {}
+            raw_args = fn.get("arguments") or "{}"
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                args = {"_unparsed_arguments": str(raw_args)[:500]}
+            if not isinstance(args, dict):
+                args = {"_unparsed_arguments": str(raw_args)[:500]}
+            calls.append(
+                ToolCallRequest(
+                    id=str(tc.get("id") or f"call-{i}"), name=str(fn.get("name")), arguments=args
+                )
+            )
+        usage = data.get("usage") or {}
+        text = message.get("content") or ""
+        return ChatTurn(
+            text=text if isinstance(text, str) else str(text),
+            tool_calls=calls,
+            model=str(data.get("model") or request.model),
+            input_tokens=int(usage.get("prompt_tokens", 0) or 0),
+            output_tokens=int(usage.get("completion_tokens", 0) or 0),
+            latency_s=dt,
+            stop_reason=str(choices[0].get("finish_reason") or "unknown"),
+            cost_usd=_reported_cost(usage),
+            raw=message,
+        )
+
+
+def _to_openai(m: dict[str, Any]) -> list[dict[str, Any]]:
+    """Instar's conversation form to chat-completions messages."""
+    role = m.get("role")
+    if role == "assistant":
+        out: dict[str, Any] = {"role": "assistant", "content": m.get("text") or None}
+        calls = m.get("tool_calls") or []
+        if calls:
+            out["tool_calls"] = [
+                {
+                    "id": c.id,
+                    "type": "function",
+                    "function": {"name": c.name, "arguments": json.dumps(c.arguments)},
+                }
+                for c in calls
+            ]
+        return [out]
+    if role == "tool_results":
+        return [
+            {"role": "tool", "tool_call_id": r["id"], "content": r["content"]} for r in m["results"]
+        ]
+    return [{"role": str(role), "content": m.get("content", "")}]
 
 
 def _reported_cost(usage: dict[str, Any]) -> float | None:

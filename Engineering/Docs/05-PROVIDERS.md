@@ -26,10 +26,10 @@ Two implementations cover almost everything:
 | Backend | Reaches | Needs |
 |---|---|---|
 | `OpenAICompatBackend` | vLLM, Ollama, llama.cpp, TGI, LM Studio, LiteLLM proxy, OpenRouter, OpenAI, and most hosted providers | nothing — stdlib `urllib` |
-| `AnthropicBackend` | Anthropic | `pip install 'instar[anthropic]'` |
+| `AnthropicBackend` | Anthropic | `pip install 'instar-harness[anthropic]'` |
 
 Because the OpenAI-compatible dialect is near-universal, **the harness core
-needs no SDK at all.** That is deliberate: `pip install instar` pulls in nothing,
+needs no SDK at all.** That is deliberate: `pip install instar-harness` pulls in nothing,
 mock mode runs anywhere, and a provider SDK release cannot break your CI.
 
 On the command line, an arm becomes OpenAI-compatible the moment you give it a

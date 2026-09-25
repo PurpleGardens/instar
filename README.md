@@ -56,7 +56,7 @@ pip install -e .
 
 The harness core is **stdlib-only** — the bare install pulls in nothing. That includes the OpenAI-compatible backend, so vLLM, Ollama, LiteLLM, OpenRouter, and OpenAI are all reachable without an extra dependency. Anthropic's SDK is an optional extra (`pip install -e ".[anthropic]"`).
 
-PyPI publication is deferred to v0.2 (see [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) §14) — `pip install instar` requires committing to a stable API surface we're not ready to promise at v0.1.
+PyPI publication is deferred to v0.2 (see [`Planning/Project-Plan.md`](./Planning/Project-Plan.md) §14) — `pip install instar-harness` (the PyPI name; bare `instar` is disallowed by PyPI, and the import and CLI stay `instar`) requires committing to a stable API surface we're not ready to promise at v0.1.
 
 Python 3.11+.
 

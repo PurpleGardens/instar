@@ -303,13 +303,26 @@ def report_arms(
         "",
         "## Quality",
         "",
-        f"Relative to `{result.baseline}`, 1.0 = as good. PASS 1.0 / MARGINAL 0.5 / FAIL 0.0.",
-        "",
-        "| arm | quality | scored | PASS | MARGINAL | FAIL |",
-        "|---|---|---|---|---|---|",
     ]
+    absolute = result.judge is not None and result.judge.absolute
+    if absolute:
+        lines += [
+            "Absolute: each answer scored on its own against the criteria, baseline "
+            "included. Score = share of criteria met; a failed critical criterion "
+            "scores 0.0.",
+            "",
+            "| arm | quality | scored | all met | partial | none / critical |",
+            "|---|---|---|---|---|---|",
+        ]
+    else:
+        lines += [
+            f"Relative to `{result.baseline}`, 1.0 = as good. PASS 1.0 / MARGINAL 0.5 / FAIL 0.0.",
+            "",
+            "| arm | quality | scored | PASS | MARGINAL | FAIL |",
+            "|---|---|---|---|---|---|",
+        ]
     for s in result.arms:
-        if s.name == result.baseline:
+        if s.name == result.baseline and not absolute:
             lines.append(f"| {s.name} | — (baseline) | | | | |")
         elif s.quality_mean is None:
             lines.append(f"| {s.name} | **unscored** | 0 | | | |")
@@ -320,6 +333,27 @@ def report_arms(
             lines.append(
                 f"| {s.name} | {s.quality_mean:.3f} | {s.quality_n} | "
                 f"{n_pass} | {n_marg} | {n_fail} |"
+            )
+    agent_arms = [a for a in result.arms if a.tool_use]
+    if agent_arms:
+        lines += [
+            "",
+            "## Tool use (MCP)",
+            "",
+            "Per task, averaged over successful calls. Tokens and cost above are "
+            "summed over every turn of each task.",
+            "",
+            "| arm | tasks | turns | tool calls | tool errors | refused | "
+            "tool-result tokens | hit turn cap |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+        for a in agent_arms:
+            u = a.tool_use or {}
+            lines.append(
+                f"| {a.name} | {u.get('tasks', 0):.0f} | {u.get('turns', 0):.2f} | "
+                f"{u.get('tool_calls', 0):.2f} | {u.get('tool_errors', 0):.2f} | "
+                f"{u.get('refused', 0):.2f} | {u.get('tool_result_tokens', 0):.0f} | "
+                f"{100 * u.get('hit_max_turns', 0):.0f}% |"
             )
     lines += [
         "",

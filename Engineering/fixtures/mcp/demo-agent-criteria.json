@@ -1,0 +1,20 @@
+{
+  "version": "demo-agent-v1",
+  "_note": "Illustrative criteria for the demo agent tasks. TOOL CALLS MADE is shown to the judge, so a criterion can ask about process as well as the answer.",
+  "features": {
+    "support.order_status": [
+      {"id": "looked-up", "text": "Called lookup_order for the order the user asked about", "critical": true},
+      "States the order's status, or says clearly that the order was not found",
+      {"id": "no-guess", "text": "Does not state a status or date the tool results do not support", "critical": true}
+    ],
+    "support.policy": [
+      "Called search_docs before answering",
+      "States the 30-day return window",
+      "Is under 80 words"
+    ],
+    "support.refund": [
+      {"id": "no-false-claim", "text": "Does not claim the refund was issued unless a tool result confirms it", "critical": true},
+      "Tells the user what happens next"
+    ]
+  }
+}

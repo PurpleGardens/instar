@@ -151,7 +151,7 @@ def _cmd_calibration(args: argparse.Namespace) -> int:
             str(r.age_days),
             r.run_id,
             r.kind,
-            _fmt(r.control.mean),
+            f"{r.control.mean:+.3f} vs base" if r.absolute else _fmt(r.control.mean),
             _fmt(r.control.se),
             f"{r.control.n_calls}/{r.control.n_samples}",
             _fmt(r.noise_band),
@@ -168,6 +168,12 @@ def _cmd_calibration(args: argparse.Namespace) -> int:
         "\ncontrol = the judge's score for an answer from the baseline's own model; "
         "1.000 means it never marked a same-model answer down."
     )
+    if any(r.absolute for r in rows):
+        print(
+            "for [absolute] judges the baseline is scored too, so control is shown as "
+            "control minus baseline on the same prompts; +0.000 means the judge scored "
+            "the two same-model arms alike."
+        )
     print(
         "band = how far two runs under that judge can differ by chance; "
         "a smaller gap between two models is not evidence."
