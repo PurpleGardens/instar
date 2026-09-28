@@ -60,6 +60,7 @@ from typing import Any
 from instar.core.traffic import TrafficSample
 from instar.providers.base import Backend, CompletionResult, sample_text
 from instar.rubrics.base import Judge, JudgeKey, JudgeResult, model_family
+from instar.rubrics.judges import judge_complete
 
 # Reasoning models spend hidden tokens before emitting content; without this
 # headroom, the per-criterion cap runs out on reasoning and every verdict comes
@@ -263,7 +264,7 @@ class CriteriaJudge(Judge):
             max_tokens=8 * len(criteria) + 16 + _REASONING_HEADROOM,
             temperature=0.0,
         )
-        result = self.judge_backend.complete(probe, self.judge_model)
+        result = judge_complete(self.judge_backend, probe, self.judge_model)
         if not result.ok:
             return JudgeResult(0.0, f"judge call failed: {result.error}")
         return criteria_score(criteria, parse_verdicts(result.text, len(criteria)))

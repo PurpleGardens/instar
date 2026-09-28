@@ -4,7 +4,14 @@
 from instar.core.catalog import BACKGROUND, FOREGROUND, FeatureCatalog
 from instar.core.traffic import TrafficSample
 from instar.providers.base import Backend, CompletionResult
-from instar.rubrics.judges import AutoJudge, LabelMatchJudge, LLMJudge, MockJudge
+from instar.rubrics.judges import (
+    AutoJudge,
+    LabelMatchJudge,
+    LLMJudge,
+    MockJudge,
+    _is_transient,
+    judge_complete,
+)
 
 CATALOG = FeatureCatalog({"bg.job": BACKGROUND, "fg.chat": FOREGROUND})
 LABELS = ["billing", "bug_report", "account_access", "access"]
@@ -188,3 +195,70 @@ def test_auto_judge_works_without_a_label_judge() -> None:
     llm = LLMJudge(_VerdictBackend("PASS"), "m")
     judge = AutoJudge(None, llm)
     assert judge.score(_sample(gold="billing"), _result("a"), _result("b")).score == 1.0
+
+
+# ── judge retry ─────────────────────────────────────────────────────────
+
+
+class _SequenceBackend(Backend):
+    """Returns each queued CompletionResult in turn."""
+
+    name = "seq"
+
+    def __init__(self, results: list[CompletionResult]) -> None:
+        self._results = list(results)
+        self.calls = 0
+
+    def complete(self, sample: TrafficSample, model: str) -> CompletionResult:
+        self.calls += 1
+        return self._results.pop(0)
+
+
+def _fail(err: str) -> CompletionResult:
+    return CompletionResult.failure("m", err)
+
+
+def _ok() -> CompletionResult:
+    return CompletionResult(text="PASS", model="m", input_tokens=1, output_tokens=1, latency_s=0.0)
+
+
+def test_is_transient_classifies_http_codes() -> None:
+    assert _is_transient("HTTP 429: rate limit")
+    assert _is_transient("HTTP 503: bad gateway")
+    assert _is_transient("HTTP 500: oops")
+    assert not _is_transient("HTTP 400: bad request")
+    assert not _is_transient("HTTP 401: unauthorized")
+    assert not _is_transient(None)
+    assert not _is_transient("")
+
+
+def test_is_transient_classifies_network_errors() -> None:
+    assert _is_transient("TimeoutError: read timed out")
+    assert _is_transient("URLError: <urlopen error [Errno 111]>")
+    assert _is_transient("ConnectionResetError: peer reset")
+    assert not _is_transient("ValueError: bad json")
+    assert not _is_transient("judge exploded")
+
+
+def test_judge_complete_retries_on_transient_then_succeeds(monkeypatch) -> None:
+    monkeypatch.setattr("instar.rubrics.judges.time.sleep", lambda _: None)
+    backend = _SequenceBackend([_fail("HTTP 429: slow down"), _ok()])
+    result = judge_complete(backend, _sample(), "m")
+    assert result.ok
+    assert backend.calls == 2
+
+
+def test_judge_complete_gives_up_after_retries_exhausted(monkeypatch) -> None:
+    monkeypatch.setattr("instar.rubrics.judges.time.sleep", lambda _: None)
+    backend = _SequenceBackend([_fail("HTTP 503: gateway"), _fail("HTTP 503: gateway"), _fail("HTTP 503: gateway")])
+    result = judge_complete(backend, _sample(), "m")
+    assert not result.ok
+    assert backend.calls == 3  # initial + 2 retries
+
+
+def test_judge_complete_does_not_retry_non_transient(monkeypatch) -> None:
+    monkeypatch.setattr("instar.rubrics.judges.time.sleep", lambda _: None)
+    backend = _SequenceBackend([_fail("HTTP 400: bad request")])
+    result = judge_complete(backend, _sample(), "m")
+    assert not result.ok
+    assert backend.calls == 1
