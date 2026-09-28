@@ -23,6 +23,11 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 
+# Reasoning models spend hidden tokens before emitting content; without this
+# headroom, a one-word verdict cap runs out on reasoning and the parser sees
+# an empty string and falls back to "unreadable" for every call.
+_REASONING_HEADROOM = 512
+
 from instar.core.catalog import BACKGROUND, FeatureCatalog
 from instar.core.traffic import TrafficSample
 from instar.providers.base import Backend, CompletionResult
@@ -177,7 +182,7 @@ class LLMJudge(Judge):
             feature="judge",
             system=self.SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=8,
+            max_tokens=8 + _REASONING_HEADROOM,
         )
         result = self.judge_backend.complete(probe, self.judge_model)
         if not result.ok:
@@ -273,7 +278,7 @@ class BlindPairwiseJudge(Judge):
             feature="judge",
             system=self.SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=8,
+            max_tokens=8 + _REASONING_HEADROOM,
         )
         result = self.judge_backend.complete(probe, self.judge_model)
         if not result.ok:

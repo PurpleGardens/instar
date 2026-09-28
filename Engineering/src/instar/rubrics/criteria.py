@@ -61,6 +61,11 @@ from instar.core.traffic import TrafficSample
 from instar.providers.base import Backend, CompletionResult, sample_text
 from instar.rubrics.base import Judge, JudgeKey, JudgeResult, model_family
 
+# Reasoning models spend hidden tokens before emitting content; without this
+# headroom, the per-criterion cap runs out on reasoning and every verdict comes
+# back empty.
+_REASONING_HEADROOM = 512
+
 
 @dataclass(frozen=True)
 class Criterion:
@@ -255,7 +260,7 @@ class CriteriaJudge(Judge):
             feature="judge",
             system=self.SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=8 * len(criteria) + 16,
+            max_tokens=8 * len(criteria) + 16 + _REASONING_HEADROOM,
             temperature=0.0,
         )
         result = self.judge_backend.complete(probe, self.judge_model)
