@@ -21,17 +21,75 @@ unvalidated one has just moved the uncertainty rather than removed it.
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Iterable
+
+from instar.core.catalog import BACKGROUND, FeatureCatalog
+from instar.core.traffic import TrafficSample
+from instar.providers.base import Backend, CompletionResult
+from instar.rubrics.base import Judge, JudgeKey, JudgeResult, model_family
 
 # Reasoning models spend hidden tokens before emitting content; without this
 # headroom, a one-word verdict cap runs out on reasoning and the parser sees
 # an empty string and falls back to "unreadable" for every call.
 _REASONING_HEADROOM = 512
 
-from instar.core.catalog import BACKGROUND, FeatureCatalog
-from instar.core.traffic import TrafficSample
-from instar.providers.base import Backend, CompletionResult
-from instar.rubrics.base import Judge, JudgeKey, JudgeResult, model_family
+# HTTP codes that upstream providers use for transient conditions (rate limits,
+# gateway hiccups, upstream 5xx). A run's judge call is worth retrying on these;
+# a 400 or 401 is not.
+_TRANSIENT_HTTP = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+# Substrings from the CompletionResult.error field that signal a transport-level
+# wobble rather than a real refusal. Matched case-insensitively.
+_TRANSIENT_ERROR_HINTS = (
+    "timeout",
+    "urlerror",
+    "connectionerror",
+    "connectionreseterror",
+    "remotedisconnected",
+    "incompleteread",
+    "temporarily unavailable",
+)
+
+
+def _is_transient(error: str | None) -> bool:
+    if not error:
+        return False
+    lowered = error.lower()
+    if lowered.startswith("http "):
+        # error looks like "HTTP 429: ..." — extract the code
+        try:
+            code = int(lowered.split(":", 1)[0].split()[1])
+        except (IndexError, ValueError):
+            return False
+        return code in _TRANSIENT_HTTP
+    return any(hint in lowered for hint in _TRANSIENT_ERROR_HINTS)
+
+
+def judge_complete(
+    backend: Backend,
+    sample: TrafficSample,
+    model: str,
+    *,
+    retries: int = 2,
+    backoff_s: float = 0.5,
+) -> CompletionResult:
+    """Call the judge with limited retries on transient errors.
+
+    A judge's job is to disagree with the arm, not with the network. A rate
+    limit or gateway hiccup makes a verdict unscored — a missing reading, not
+    a real disagreement — which then quietly shifts arms' sample counts in a
+    report. A short retry costs pennies and recovers most of them.
+    """
+    result = backend.complete(sample, model)
+    delay = backoff_s
+    for _ in range(retries):
+        if result.ok or not _is_transient(result.error):
+            return result
+        time.sleep(delay)
+        delay *= 4
+        result = backend.complete(sample, model)
+    return result
 
 
 class MockJudge(Judge):
@@ -184,7 +242,7 @@ class LLMJudge(Judge):
             messages=[{"role": "user", "content": prompt}],
             max_tokens=8 + _REASONING_HEADROOM,
         )
-        result = self.judge_backend.complete(probe, self.judge_model)
+        result = judge_complete(self.judge_backend, probe, self.judge_model)
         if not result.ok:
             return JudgeResult(0.0, f"judge call failed: {result.error}")
         verdict = (result.text or "").strip().upper()
@@ -280,7 +338,7 @@ class BlindPairwiseJudge(Judge):
             messages=[{"role": "user", "content": prompt}],
             max_tokens=8 + _REASONING_HEADROOM,
         )
-        result = self.judge_backend.complete(probe, self.judge_model)
+        result = judge_complete(self.judge_backend, probe, self.judge_model)
         if not result.ok:
             return JudgeResult(0.0, f"judge call failed: {result.error}")
         verdict = (result.text or "").strip().upper()
