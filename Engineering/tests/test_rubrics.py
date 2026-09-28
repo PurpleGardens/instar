@@ -250,7 +250,8 @@ def test_judge_complete_retries_on_transient_then_succeeds(monkeypatch) -> None:
 
 def test_judge_complete_gives_up_after_retries_exhausted(monkeypatch) -> None:
     monkeypatch.setattr("instar.rubrics.judges.time.sleep", lambda _: None)
-    backend = _SequenceBackend([_fail("HTTP 503: gateway"), _fail("HTTP 503: gateway"), _fail("HTTP 503: gateway")])
+    fail = _fail("HTTP 503: gateway")
+    backend = _SequenceBackend([fail, fail, fail])
     result = judge_complete(backend, _sample(), "m")
     assert not result.ok
     assert backend.calls == 3  # initial + 2 retries
